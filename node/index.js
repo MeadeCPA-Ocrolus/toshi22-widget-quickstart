@@ -62,6 +62,8 @@ const api_issuer = bent(auth_issuer, 'POST', 'json', 200)
 const jsonParser = bodyParser.json()
 
 const app = express()
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../frontend/public')));
 
 app.use(
     bodyParser.urlencoded({

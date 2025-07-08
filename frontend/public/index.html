@@ -2,47 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <link href="https://fonts.googleapis.com/css2?family=Karla:wght@300;400;500;700&display=swap"
-    rel="stylesheet"
-    />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
-
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
     <title>Ocrolus Widget</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+    <h2>Ocrolus Widget Frame</h2>
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+    <div id="ocrolus-widget-frame" style="width: 100%; height: 600px;"></div>
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
+    <script>
+      window.getAuthToken = async function () {
+        const response = await fetch('/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: 'demoUser',
+            bookName: 'demoBook',
+          }),
+        });
+        const json = await response.json();
+        return json.accessToken;
+      };
+    </script>
+
+    <script id="ocrolus-initializer-script">
+      (function (w, d, s, o, h, u, f, js, fjs) {
+        w[o] = w[o] || function () {
+          (w[o].q = w[o].q || []).push(arguments);
+        };
+        js = d.createElement(s);
+        fjs = d.getElementsByTagName(s)[0];
+        js.id = o;
+        js.dataset.host = h;
+        js.dataset.uuid = u;
+        js.src = f;
+        js.async = 1;
+        fjs.parentNode.insertBefore(js, fjs);
+        w[o]('init');
+      })(
+        window,
+        document,
+        'script',
+        'ocrolus_script',
+        'https://widget.ocrolus.com',
+        '201cf4c2-204b-4458-af55-29bb2e0c89ba',
+        'https://widget.ocrolus.com/static/initializer-sdk.bundle.js'
+      );
+    </script>
   </body>
-
-  <script id=ocrolus-initializer-script>(function (w, d, s, o, h, u, f, js, fjs) { w[o] = w[o] || function () { (w[o].q = w[o].q || []).push(arguments); }; (js = d.createElement(s)), (fjs = d.getElementsByTagName(s)[0]); js.id = o; js.dataset.host = h; js.dataset.uuid = u; js.src = f; js.async = 1; fjs.parentNode.insertBefore(js, fjs); })( window, document, 'script', 'ocrolus_script', 'https://widget.ocrolus.com', '6dbdd064-9424-4b5d-9ea0-2ac8c1c312b0', "https://widget.ocrolus.com/static/initializer-sdk.bundle.js" ); ocrolus_script('init', );</script>
 </html>

@@ -12,7 +12,7 @@ function App() {
     useEffect(() => {
         if (submit) {
             ;(window as any).getAuthToken = async function () {
-                const response = await fetch('https://auth.ocrolusexample.com/token', {
+                const response = await fetch('/token', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
