@@ -7,26 +7,26 @@ import Module from 'Components/Module'
 
 function App() {
     const [userKey, setUserKey] = useState('')
-    const [bookName, setFolderName] = useState('')
-    const [submit, setSubmit] = useState(false)
+    const [bookName, setBookName] = useState('')
+
+    // ✅ Always define getAuthToken so the widget can find it early
     useEffect(() => {
-        if (submit) {
-            ;(window as any).getAuthToken = async function () {
-                const response = await fetch('/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        userId: userKey,
-                        bookName: bookName,
-                    }),
-                })
-                const json = await response.json()
-                return json.accessToken
-            }
+        (window as any).getAuthToken = async function () {
+            const response = await fetch('/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userId: userKey,
+                    bookName: bookName,
+                }),
+            })
+
+            const json = await response.json()
+            return json.accessToken
         }
-    }, [userKey, bookName, submit])
+    }, [userKey, bookName])
 
     return (
         <Box sx={{ display: 'flex' }}>
@@ -46,11 +46,13 @@ function App() {
                             type="text"
                             placeholder="Enter Book Name"
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                setFolderName(e.target.value)
+                                setBookName(e.target.value)
                             }
                         />
                     )}
-                    <Button onClick={() => setSubmit(!submit)}>Get Token</Button>
+                    <Button onClick={() => console.log('Widget will fetch token on load.')}>
+                        Get Token
+                    </Button>
                 </Box>
                 <Module>
                     <Box id="ocrolus-widget-frame"></Box>
