@@ -1,4 +1,4 @@
-import { Drawer, List, ListItem, ListItemButton, Divider } from '@mui/material'
+import { Drawer, List, ListItem, ListItemButton } from '@mui/material'
 
 export default function Sidebar() {
     return (
@@ -15,19 +15,9 @@ export default function Sidebar() {
             anchor="left"
         >
             <List>
-                {['Home', 'Personal Details', 'Employment & Income', 'Mortgage Loan Details'].map(key => (
-                    <ListItem>
-                        <ListItemButton selected={key === 'Employment & Income'}>{key}</ListItemButton>
-                    </ListItem>
-                ))}
-                <Divider />
-                {['Online Access Agreement', 'Privacy Policies', 'Contact Us', 'Make an Appointment'].map(
-                    key => (
-                        <ListItem>
-                            <ListItemButton>{key}</ListItemButton>
-                        </ListItem>
-                    )
-                )}
+                <ListItem>
+                    <ListItemButton selected>Home</ListItemButton>
+                </ListItem>
             </List>
         </Drawer>
     )

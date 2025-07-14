@@ -9,7 +9,6 @@ function App() {
     const [userKey, setUserKey] = useState('')
     const [bookName, setBookName] = useState('')
 
-    // ✅ Always define getAuthToken so the widget can find it early
     useEffect(() => {
         (window as any).getAuthToken = async function () {
             const response = await fetch('/token', {
