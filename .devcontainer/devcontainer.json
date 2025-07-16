@@ -8,6 +8,6 @@
     "OCROLUS_WIDGET_ENVIRONMENT": "${OCROLUS_WIDGET_ENVIRONMENT}",
     "APP_PORT": "${APP_PORT}"
   },
-  "postCreateCommand": "npm install --workspaces",
+  "postCreateCommand": "npm install --workspaces && npm run build --workspace=frontend",
   "postStartCommand": "npm run start"
 }
