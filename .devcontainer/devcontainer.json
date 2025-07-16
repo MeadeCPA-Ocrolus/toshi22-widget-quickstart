@@ -1,5 +1,6 @@
 {
   "name": "Ocrolus Widget App",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20", 
   "features": {
     "ghcr.io/devcontainers/features/github-codespaces-secrets:1": {}
   },
