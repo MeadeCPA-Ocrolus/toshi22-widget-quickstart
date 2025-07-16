@@ -1,9 +1,6 @@
 {
   "name": "Ocrolus Widget App",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
-  "features": {
-    "ghcr.io/devcontainers/features/github-codespaces-secrets:1": {}
-  },
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
   "remoteEnv": {
     "OCROLUS_CLIENT_ID": "${OCROLUS_CLIENT_ID}",
     "OCROLUS_CLIENT_SECRET": "${OCROLUS_CLIENT_SECRET}",
@@ -11,5 +8,6 @@
     "OCROLUS_WIDGET_ENVIRONMENT": "${OCROLUS_WIDGET_ENVIRONMENT}",
     "APP_PORT": "${APP_PORT}"
   },
-  "postCreateCommand": "npm install --workspaces"
+  "postCreateCommand": "npm install --workspaces",
+  "postStartCommand": "npm run start"
 }
