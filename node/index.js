@@ -78,38 +78,31 @@ app.use(
 app.use(jsonParser)
 app.use(cors())
 
-// This is an example proxy for a query that an implementing server would need to do
-// in order to get the desired external_id value to be sent to Ocrolus. For example
-// purposes this will just mirror back the passed userId
-function getUserExternalId(userId) {
-    console.log('hypothetical user lookup', userId)
-    return Promise.resolve('Hello')
-}
-
 app.post('/token', function (request, response) {
-    const user_token = request.headers.authorization || 1234
     const { userId: passedUserId, bookName } = request.body
-    console.log('user_token', user_token)
+
     console.log('Passed User Id', passedUserId)
     console.log('Passed Book Name', bookName)
 
-    return getUserExternalId(user_token).then(userId => {
-        return issuer(`/v1/widget/${OCROLUS_WIDGET_UUID}/token`, {
-            client_id: OCROLUS_CLIENT_ID,
-            client_secret: OCROLUS_CLIENT_SECRET,
-            custom_id: passedUserId || userId,
-            grant_type: 'client_credentials',
-            book_name: bookName || 'Widget Book',
-        }).then(token_response => {
-            const token = token_response.access_token
-            console.log('Token Acquired')
-            response.json({ accessToken: token })
-        })
+    const finalUserId = passedUserId || 'default-user'
+
+    return issuer(`/v1/widget/${OCROLUS_WIDGET_UUID}/token`, {
+        client_id: OCROLUS_CLIENT_ID,
+        client_secret: OCROLUS_CLIENT_SECRET,
+        custom_id: finalUserId,
+        grant_type: 'client_credentials',
+        book_name: bookName || 'Widget Book',
+    }).then(token_response => {
+        const token = token_response.access_token
+        console.log('Token Acquired for', finalUserId)
+        response.json({ accessToken: token })
+    }).catch(err => {
+        console.error('Token Request Failed:', err)
+        response.status(500).json({ error: 'Token request failed' })
     })
 })
 
 app.post('/upload', function (request, response) {
-    // Validate allowed IPs
     const sender = request.headers['x-forwarded-for']
     console.log(sender)
     console.log(request.body)

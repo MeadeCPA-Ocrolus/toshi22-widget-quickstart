@@ -8,6 +8,7 @@ import Module from 'Components/Module'
 function App() {
     const [userKey, setUserKey] = useState('')
     const [bookName, setBookName] = useState('')
+    const [widgetKey, setWidgetKey] = useState(0) // for forcing widget refresh
 
     useEffect(() => {
         (window as any).getAuthToken = async function () {
@@ -26,6 +27,30 @@ function App() {
             return json.accessToken
         }
     }, [userKey, bookName])
+
+    const handleGetToken = async () => {
+        const response = await fetch('/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                userId: userKey,
+                bookName: bookName,
+            }),
+        })
+
+        const json = await response.json()
+        console.log('New token acquired for:', userKey)
+
+        if ((window as any).ocrolus_script) {
+            ;(window as any).ocrolus_script('init')
+            console.log('Widget reinitialized')
+        } else {
+            console.warn('ocrolus_script not found')
+        }
+        setWidgetKey(prev => prev + 1)
+    }
 
     return (
         <Box sx={{ display: 'flex' }}>
@@ -49,12 +74,10 @@ function App() {
                             }
                         />
                     )}
-                    <Button onClick={() => console.log('Widget will fetch token on load.')}>
-                        Get Token
-                    </Button>
+                    <Button onClick={handleGetToken}>Get Token</Button>
                 </Box>
                 <Module>
-                    <Box id="ocrolus-widget-frame"></Box>
+                    <Box id="ocrolus-widget-frame" key={widgetKey}></Box>
                 </Module>
             </Box>
         </Box>
