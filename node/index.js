@@ -66,10 +66,6 @@ const path = require('path');
 //app.use(express.static(path.join(__dirname, '../frontend/public')));
 app.use(express.static(path.join(__dirname, '../frontend/build')));
 
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
-});
-
 app.use(
     bodyParser.urlencoded({
         extended: false,
@@ -100,6 +96,24 @@ app.post('/token', function (request, response) {
         console.error('Token Request Failed:', err)
         response.status(500).json({ error: 'Token request failed' })
     })
+})
+
+app.get('/books', async function (req, res) {
+    try {
+        const tokenResp = await api_issuer('/oauth/token', {
+            client_id: process.env.OCROLUS_API_CLIENT_ID,
+            client_secret: process.env.OCROLUS_API_CLIENT_SECRET,
+            grant_type: 'client_credentials',
+        })
+
+        const getBooks = ocrolusBent('GET', tokenResp.access_token)
+        const books = await getBooks('/v1/books?limit=50&order_by=created')
+
+        res.json(books)
+    } catch (err) {
+        console.error('Error fetching book list:', err)
+        res.status(500).json({ error: 'Failed to retrieve book list' })
+    }
 })
 
 app.post('/upload', function (request, response) {
@@ -150,6 +164,10 @@ app.post('/upload', function (request, response) {
         })
     })
 })
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+});
 
 const server = app.listen(PORT, function () {
     console.log('quickstart server listening on port ' + PORT)
