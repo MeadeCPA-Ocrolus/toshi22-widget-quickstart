@@ -28,12 +28,14 @@ function App() {
         console.log('Fetched books:', data)
 
         if (Array.isArray(data.response.books)) {
-          const books = data.response.books.map((book: any) => ({
-            id: book.pk,
-            name: book.name,
-            book_uuid: book.book_uuid,
-            xid: book.xid || null,
-          }))
+          const books = data.response.books
+            .filter((book: any) => book.book_type === 'WIDGET')
+            .map((book: any) => ({
+              id: book.pk,
+              name: book.name,
+              book_uuid: book.book_uuid,
+              xid: book.xid || null,
+            }))
           setBookList(books)
         } else {
           console.warn('Expected books array in data.response but got:', data.response)
