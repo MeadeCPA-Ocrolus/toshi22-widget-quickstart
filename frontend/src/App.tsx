@@ -127,81 +127,80 @@ function App() {
   return (
     <Box sx={{ display: 'flex' }}>
       <Box component="main" className="content-column" sx={{ flexGrow: 1, p: 3 }}>
-        <IncomePrompt />
+      <IncomePrompt />
 
+      <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* Book Selection Card */}
         <Box
           sx={{
-            maxWidth: 700,
-            margin: '0 auto',
+            flex: 1,
+            minWidth: 340,
             padding: 3,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 2,
             border: '1px solid #ddd',
             borderRadius: 2,
             boxShadow: 1,
             backgroundColor: '#fafafa',
           }}
         >
-          <Typography variant="h6"> Choose an existing book or create a new one</Typography>
-
-          <Box
-            sx={{
-              display: 'flex',
-              gap: 2,
-              width: '100%',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-            }}
-          >
-            <FormControl fullWidth variant="outlined">
-              <InputLabel id="existing-book-label">Existing Book</InputLabel>
-              <Select
-                labelId="existing-book-label"
-                value={selectedBook}
-                label="Existing Book"
-                onChange={(e) => setSelectedBook(e.target.value)}
-              >
-                <MenuItem value="">
-                  <em>-- Create New Book --</em>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Choose an existing book or create a new one
+          </Typography>
+          <FormControl fullWidth variant="outlined">
+            <InputLabel id="existing-book-label">Existing Book</InputLabel>
+            <Select
+              labelId="existing-book-label"
+              value={selectedBook}
+              label="Existing Book"
+              onChange={(e) => setSelectedBook(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>-- Create New Book --</em>
+              </MenuItem>
+              {bookList.map((book) => (
+                <MenuItem key={book.id} value={book.name}>
+                  {book.name}
                 </MenuItem>
-                {bookList.map((book) => (
-                  <MenuItem key={book.id} value={book.name}>
-                    {book.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+              ))}
+            </Select>
+          </FormControl>
 
-            <Input
-              fullWidth
-              placeholder="Custom ID (required)"
-              value={userKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
-            />
-          </Box>
-
+          <Input
+            fullWidth
+            placeholder="Custom ID (required)"
+            value={userKey}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
+          />
           <Input
             fullWidth
             placeholder="Book Name"
             value={bookName}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBookName(e.target.value)}
+            sx={{ mb: 2 }}
           />
 
-          <Button
-            variant="contained"
-            onClick={handleGetToken}
-            sx={{ mt: 1, width: '100%' }}
-          >
-            Initialize Token
-          </Button>
-        </Box>
-
-        <Module>
-          <Box id="ocrolus-widget-frame" key={widgetKey}></Box>
-        </Module>
+        <Button variant="contained" fullWidth onClick={handleGetToken}>
+          Initialize Token
+        </Button>
       </Box>
+
+        {/* Widget Display */}
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: 340,
+            padding: 3,
+            border: '1px solid #ddd',
+            borderRadius: 2,
+            boxShadow: 1,
+            backgroundColor: '#fff',
+          }}
+        >
+          <Module>
+            <Box id="ocrolus-widget-frame" key={widgetKey}></Box>
+          </Module>
+        </Box>
+      </Box>
+    </Box>
     </Box>
   )
 }
