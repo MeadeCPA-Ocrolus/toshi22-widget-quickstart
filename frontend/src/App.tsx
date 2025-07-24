@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Box, Input, Button, Select, MenuItem, FormControl, InputLabel } from '@mui/material'
+import {
+  Box,
+  Input,
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Typography,
+} from '@mui/material'
 import Sidebar from 'Components/Sidebar'
 import IncomePrompt from 'Components/IncomePrompt'
 import './App.css'
@@ -19,7 +28,6 @@ function App() {
   const [bookList, setBookList] = useState<Book[]>([])
   const [selectedBook, setSelectedBook] = useState<string>('')
 
-  // Fetch list of books on mount
   useEffect(() => {
     async function fetchBooks() {
       try {
@@ -45,15 +53,24 @@ function App() {
         console.error('Failed to fetch books:', err)
       }
     }
+
     fetchBooks()
   }, [])
 
-  // Set window.getAuthToken for widget
   useEffect(() => {
     ;(window as any).getAuthToken = async () => {
       const selected = bookList.find(book => book.name === selectedBook)
-      const customId = selected?.xid || userKey
-      const name = bookName || selected?.name || 'Untitled Book'
+
+      let customId = ''
+      let name = ''
+
+      if (selected) {
+        customId = selected.xid || userKey
+        name = selected.name
+      } else {
+        customId = userKey
+        name = bookName || 'Untitled Book'
+      }
 
       const res = await fetch('/token', {
         method: 'POST',
@@ -72,8 +89,17 @@ function App() {
 
   const handleGetToken = async () => {
     const selected = bookList.find(book => book.name === selectedBook)
-    const customId = selected?.xid || userKey
-    const name = selected?.name || bookName || 'Untitled Book'
+
+    let customId = ''
+    let name = ''
+
+    if (selected) {
+      customId = selected.xid || userKey
+      name = selected.name
+    } else {
+      customId = userKey
+      name = bookName || 'Untitled Book'
+    }
 
     const res = await fetch('/token', {
       method: 'POST',
@@ -100,41 +126,75 @@ function App() {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <Sidebar />
       <Box component="main" className="content-column" sx={{ flexGrow: 1, p: 3 }}>
         <IncomePrompt />
-        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-          <FormControl style={{ marginRight: '15px', minWidth: '180px', marginBottom: '10px' }}>
-            <InputLabel>Select Existing Book</InputLabel>
-            <Select
-              value={selectedBook}
-              label="Select Existing Book"
-              onChange={(e) => setSelectedBook(e.target.value)}
-            >
-              {bookList.map((book) => (
-                <MenuItem key={book.id} value={book.name}>
-                  {book.name}
+
+        <Box
+          sx={{
+            maxWidth: 700,
+            margin: '0 auto',
+            padding: 3,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            border: '1px solid #ddd',
+            borderRadius: 2,
+            boxShadow: 1,
+            backgroundColor: '#fafafa',
+          }}
+        >
+          <Typography variant="h6"> Choose an existing book or create a new one</Typography>
+
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 2,
+              width: '100%',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+            }}
+          >
+            <FormControl fullWidth variant="outlined">
+              <InputLabel id="existing-book-label">Existing Book</InputLabel>
+              <Select
+                labelId="existing-book-label"
+                value={selectedBook}
+                label="Existing Book"
+                onChange={(e) => setSelectedBook(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>-- Create New Book --</em>
                 </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+                {bookList.map((book) => (
+                  <MenuItem key={book.id} value={book.name}>
+                    {book.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Input
+              fullWidth
+              placeholder="Custom ID (required)"
+              value={userKey}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
+            />
+          </Box>
 
           <Input
-            style={{ marginRight: '15px', marginBottom: '10px' }}
-            type="text"
-            placeholder="Or enter new Book Name"
+            fullWidth
+            placeholder="Book Name"
+            value={bookName}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBookName(e.target.value)}
           />
 
-          <Input
-            style={{ marginRight: '15px', marginBottom: '10px' }}
-            type="text"
-            placeholder="Optional: Enter Custom ID"
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
-          />
-
-          <Button variant="contained" onClick={handleGetToken}>
-            Get Token
+          <Button
+            variant="contained"
+            onClick={handleGetToken}
+            sx={{ mt: 1, width: '100%' }}
+          >
+            Initialize Token
           </Button>
         </Box>
 
