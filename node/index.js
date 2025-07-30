@@ -5,13 +5,37 @@ const express = require('express')
 const cors = require('cors')
 const bent = require('bent')
 const bodyParser = require('body-parser')
-const { writeFile } = require('fs/promises')
+const fs = require('fs')
+const { readFile, writeFile } = require('fs/promises')
 
 const PORT = process.env.APP_PORT || 8000
 const ENV = process.env.OCROLUS_WIDGET_ENVIRONMENT || 'production'
 const OCROLUS_CLIENT_ID = process.env.OCROLUS_CLIENT_ID
 const OCROLUS_CLIENT_SECRET = process.env.OCROLUS_CLIENT_SECRET
 const OCROLUS_WIDGET_UUID = process.env.OCROLUS_WIDGET_UUID
+
+const DATA_DIR = './data'
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR)
+}
+
+const WEBHOOK_LOG_PATH = './data/webhook-log.json'
+async function appendWebhookLog(entry) {
+  try {
+    let logs = []
+    try {
+      const content = await readFile(WEBHOOK_LOG_PATH, 'utf8')
+      logs = JSON.parse(content)
+    } catch (err) {
+      // file doesn't exist yet
+    }
+
+    logs.push({ timestamp: new Date().toISOString(), ...entry })
+    await writeFile(WEBHOOK_LOG_PATH, JSON.stringify(logs, null, 2))
+  } catch (err) {
+    console.error('Error appending to webhook log:', err)
+  }
+}
 
 if (!OCROLUS_CLIENT_ID && !OCROLUS_CLIENT_SECRET) {
     throw Error(
@@ -116,53 +140,106 @@ app.get('/books', async function (req, res) {
     }
 })
 
-app.post('/upload', function (request, response) {
-    const sender = request.headers['x-forwarded-for']
-    console.log(sender)
-    console.log(request.body)
-    console.log(request.body.event_name)
-    console.log(request.body.event_name !== DOCUMENT_CLASSIFIED)
-    if (OCROLUS_IP_ALLOWLIST.indexOf(sender) === -1) {
-        console.log('ignored sender')
-        return response.sendStatus(401)
-    }
-    // Validate that the document is ready to be downloaded
-    if (request.body.event_name !== DOCUMENT_READY && request.body.event_name !== DOCUMENT_CLASSIFIED) {
-        return response.json({})
-    }
-    console.log('Downloading file', request.body.book_uuid, request.body.mixed_uploaded_doc_uuid)
+app.post('/handler', async (req, res) => {
+  const sender = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  const event = req.body.event_name;
+  const webhookData = req.body;
+  const timestamp = new Date().toISOString();
 
-    return api_issuer('/oauth/token', {
-        client_id: OCROLUS_CLIENT_ID,
-        client_secret: OCROLUS_CLIENT_SECRET,
-        grant_type: 'client_credentials',
-    }).then(token_response => {
-        console.log('Downloading document')
-        console.log(token_response)
-        const webhookData = request.body
-        const { access_token: accessToken } = token_response
+  console.log('📩 Webhook received');
+  console.log('From:', sender);
+  console.log('Event:', event);
+  console.log('Payload:', JSON.stringify(webhookData, null, 2));
 
-        return ocrolusBent('GET', accessToken)(
-            `/v1/book/info?book_uuid=${webhookData.book_uuid}`,
-            undefined
-        ).then(bookQueryResp => {
-            console.log(bookQueryResp)
-            const bookData = bookQueryResp.response
-            if (bookData.book_type != WIDGET_BOOK_TYPE) {
-                return response.json({})
-            }
+  // Always log the received webhook
+  await appendWebhookLog({
+    received: true,
+    event,
+    book_uuid: webhookData.book_uuid,
+    doc_uuid: webhookData.doc_uuid,
+    status: 'pending',
+    timestamp,
+  });
 
-            return downloadOcrolus(
-                'GET',
-                accessToken
-            )(`/v2/document/download?doc_uuid=${webhookData.doc_uuid}`).then(doc => {
-                console.log(doc)
-                console.log('Download of file started')
-                writeFile('ocrolus_document.pdf', doc)
-                response.json({})
-            })
-        })
-    })
+  // Only proceed with specific events
+  const allowedEvents = ['document.ready', 'document.classified', 'document.verification_succeeded'];
+  if (!allowedEvents.includes(event)) {
+    console.log('⚠️ Unhandled event, skipping');
+    return res.json({ message: 'Unhandled event type' });
+  }
+
+  let accessToken;
+  try {
+    const tokenResp = await api_issuer('/oauth/token', {
+      client_id: process.env.OCROLUS_API_CLIENT_ID,
+      client_secret: process.env.OCROLUS_API_CLIENT_SECRET,
+      grant_type: 'client_credentials',
+    });
+    accessToken = tokenResp.access_token;
+  } catch (err) {
+    console.error('❌ Failed to get access token:', err.message || err);
+    await appendWebhookLog({
+      event,
+      error: 'Failed to get access token',
+      timestamp,
+    });
+    return res.status(500).json({ error: 'Access token failed' });
+  }
+
+  let bookData;
+  try {
+    const getBookInfo = ocrolusBent('GET', accessToken);
+    bookData = await getBookInfo(`/v1/book/info?book_uuid=${webhookData.book_uuid}`);
+  } catch (err) {
+    console.error('❌ Failed to fetch book info:', err.message || err);
+    await appendWebhookLog({
+      event,
+      error: 'Book info fetch failed',
+      timestamp,
+    });
+    return res.status(500).json({ error: 'Book fetch failed' });
+  }
+
+  // Only allow WIDGET books
+  if (bookData.book_type !== 'WIDGET') {
+    console.log('❌ Not a widget book, ignoring');
+    await appendWebhookLog({
+      event,
+      book_uuid: webhookData.book_uuid,
+      ignored: true,
+      reason: 'Not a widget book',
+      book_type: bookData.book_type,
+      timestamp,
+    });
+    return res.json({ message: 'Not a widget book' });
+  }
+
+  // If download needed later, use this:
+  // const download = await downloadOcrolus('GET', accessToken)(`/v2/document/download?doc_uuid=${webhookData.doc_uuid}`);
+  // await writeFile(`./data/ocrolus_${webhookData.doc_uuid}.pdf`, download);
+
+  // Log successful processed event
+  await appendWebhookLog({
+    event,
+    book_uuid: webhookData.book_uuid,
+    book_name: bookData.book_name || '',
+    doc_uuid: webhookData.doc_uuid || webhookData.uploaded_doc_uuid || webhookData.mixed_uploaded_doc_uuid || '',
+    doc_name: webhookData.doc_name || '',
+    status: 'success',
+    timestamp,
+  });
+
+  res.sendStatus(200);
+});
+
+app.get('/webhook-logs', async (req, res) => {
+  try {
+    const content = await readFile(WEBHOOK_LOG_PATH, 'utf8')
+    const logs = JSON.parse(content)
+    res.json(logs)
+  } catch (err) {
+    res.json([])
+  }
 })
 
 app.get('*', (req, res) => {

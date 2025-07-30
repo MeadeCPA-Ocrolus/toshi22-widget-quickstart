@@ -1,0 +1,139 @@
+[
+  {
+    "timestamp": "2025-07-30T23:06:35.359Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "cb87c86d-2285-4f67-816e-f01bba531465",
+    "doc_uuid": "c09cec5b-c045-4a69-8d42-0951d92433da",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:06:35.791Z",
+    "event": "document.verification_succeeded",
+    "error": "Failed to get access token"
+  },
+  {
+    "timestamp": "2025-07-30T23:07:02.794Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "cb87c86d-2285-4f67-816e-f01bba531465",
+    "doc_uuid": "c09cec5b-c045-4a69-8d42-0951d92433da",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:07:03.090Z",
+    "event": "document.verification_succeeded",
+    "error": "Failed to get access token"
+  },
+  {
+    "timestamp": "2025-07-30T23:12:18.746Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "cb87c86d-2285-4f67-816e-f01bba531465",
+    "doc_uuid": "c09cec5b-c045-4a69-8d42-0951d92433da",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:12:18.748Z",
+    "event": "document.verification_succeeded",
+    "error": "Failed to get access token"
+  },
+  {
+    "timestamp": "2025-07-30T23:13:07.114Z",
+    "received": true,
+    "event": "document.upload_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:13:45.184Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "3f96dc06-80f1-409c-bd2c-8346719d8c41",
+    "doc_uuid": "21299e75-279c-4d55-ae53-f7d8177fe861",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:13:45.185Z",
+    "event": "document.verification_succeeded",
+    "error": "Failed to get access token"
+  },
+  {
+    "timestamp": "2025-07-30T23:14:00.213Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "doc_uuid": "f388ed3d-1c3e-4187-bf45-ca7f571fca15",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:14:00.215Z",
+    "event": "document.verification_succeeded",
+    "error": "Failed to get access token"
+  },
+  {
+    "timestamp": "2025-07-30T23:14:00.600Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "doc_uuid": "f388ed3d-1c3e-4187-bf45-ca7f571fca15",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:14:00.603Z",
+    "event": "document.verification_succeeded",
+    "error": "Failed to get access token"
+  },
+  {
+    "timestamp": "2025-07-30T23:14:00.645Z",
+    "received": true,
+    "event": "book.verified",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:18:25.204Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "doc_uuid": "b10f0373-9083-49c0-82ea-2279e191764c",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:18:25.711Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "ignored": true,
+    "reason": "Not a widget book"
+  },
+  {
+    "timestamp": "2025-07-30T23:30:22.249Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "efdb08d9-422b-4f47-ab87-bfc36ea5cc4c",
+    "doc_uuid": "642d3636-74dc-4270-aef4-0e7dcfc34e97",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:30:22.249Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "efdb08d9-422b-4f47-ab87-bfc36ea5cc4c",
+    "ignored": true,
+    "reason": "Not a widget book"
+  },
+  {
+    "timestamp": "2025-07-30T23:31:52.254Z",
+    "received": true,
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "doc_uuid": "2c48bab5-0494-44df-beaa-052d0f09745e",
+    "status": "pending"
+  },
+  {
+    "timestamp": "2025-07-30T23:31:52.254Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "ignored": true,
+    "reason": "Not a widget book"
+  }
+]

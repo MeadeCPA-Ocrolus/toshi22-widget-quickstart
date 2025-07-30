@@ -8,6 +8,6 @@
     "OCROLUS_WIDGET_ENVIRONMENT": "${OCROLUS_WIDGET_ENVIRONMENT}",
     "APP_PORT": "${APP_PORT}"
   },
-  "postCreateCommand": "npm install --workspaces && npm run build --workspace=frontend",
-  "postStartCommand": "npm run start"
+  "postCreateCommand": "npm install --workspaces && npm run build --workspace=frontend && npm install -g ngrok && ngrok config add-authtoken 2p05c1Atrdldz07NY0WWOLt5KWf_fLGVTghwDiiDDenVQ3iU",
+  "postStartCommand": "./start-with-ngrok.sh"
 }

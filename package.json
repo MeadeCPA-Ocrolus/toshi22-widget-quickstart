@@ -1,12 +1,18 @@
 {
   "name": "ocrolus-react-widget-project",
   "private": true,
-  "workspaces": ["frontend", "node"],
+  "workspaces": [
+    "frontend",
+    "node"
+  ],
   "scripts": {
     "start": "concurrently \"npm run start --prefix frontend\" \"npm run start --prefix node\"",
     "install-all": "npm install --workspaces"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "ngrok": "^5.0.0-beta.2"
   }
 }

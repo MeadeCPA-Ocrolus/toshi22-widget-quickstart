@@ -27,6 +27,7 @@ function App() {
   const [widgetKey, setWidgetKey] = useState(0)
   const [bookList, setBookList] = useState<Book[]>([])
   const [selectedBook, setSelectedBook] = useState<string>('')
+  const [webhookLogs, setWebhookLogs] = useState<any[]>([])
 
   useEffect(() => {
     async function fetchBooks() {
@@ -55,6 +56,22 @@ function App() {
     }
 
     fetchBooks()
+  }, [])
+
+  useEffect(() => {
+    const fetchWebhookLogs = async () => {
+      try {
+        const res = await fetch('/webhook-logs')
+        const data = await res.json()
+        setWebhookLogs(data)
+      } catch (err) {
+        console.error('Failed to fetch webhook logs:', err)
+      }
+    }
+
+    fetchWebhookLogs()
+    const interval = setInterval(fetchWebhookLogs, 5000)
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -197,6 +214,37 @@ function App() {
         >
           <Module>
             <Box id="ocrolus-widget-frame" key={widgetKey}></Box>
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="h6">Webhook Event Logs</Typography>
+
+              {webhookLogs.length === 0 ? (
+                <Typography>No webhook events yet.</Typography>
+              ) : (
+                webhookLogs.map((log, idx) => (
+                  <Box
+                    key={idx}
+                    sx={{
+                      mt: 1,
+                      p: 2,
+                      border: '1px solid #ccc',
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{log.event}</Typography>
+                    <Typography><strong>Book Name:</strong> {log.book_name || 'N/A'}</Typography>
+                    <Typography><strong>Book UUID:</strong> {log.book_uuid || 'N/A'}</Typography>
+                    <Typography><strong>Document Name:</strong> {log.doc_name || 'N/A'}</Typography>
+                    <Typography><strong>Document UUID:</strong> {log.doc_uuid || 'N/A'}</Typography>
+                    {log.status && <Typography><strong>Status:</strong> {log.status}</Typography>}
+                    {log.reason && <Typography><strong>Reason:</strong> {log.reason}</Typography>}
+                    {log.file_path && <Typography><strong>Saved Path:</strong> {log.file_path}</Typography>}
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                      Received at: {new Date(log.timestamp).toLocaleString()}
+                    </Typography>
+                  </Box>
+                ))
+              )}
+            </Box>
           </Module>
         </Box>
       </Box>
