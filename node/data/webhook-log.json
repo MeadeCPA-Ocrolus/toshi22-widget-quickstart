@@ -135,5 +135,19 @@
     "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
     "ignored": true,
     "reason": "Not a widget book"
+  },
+  {
+    "timestamp": "2025-07-31T21:50:42.903Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "doc_uuid": "497b7aaa-db04-4c0b-8670-69fefb96d2c8",
+    "status": "received"
+  },
+  {
+    "timestamp": "2025-07-31T21:50:42.903Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "ignored": true,
+    "reason": "non-widget book"
   }
 ]

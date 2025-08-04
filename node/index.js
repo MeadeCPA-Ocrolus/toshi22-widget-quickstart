@@ -20,6 +20,7 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 const WEBHOOK_LOG_PATH = './data/webhook-log.json'
+
 async function appendWebhookLog(entry) {
   try {
     let logs = []
@@ -141,31 +142,25 @@ app.get('/books', async function (req, res) {
 })
 
 app.post('/handler', async (req, res) => {
-  const sender = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
   const event = req.body.event_name;
   const webhookData = req.body;
   const timestamp = new Date().toISOString();
 
-  console.log('📩 Webhook received');
-  console.log('From:', sender);
-  console.log('Event:', event);
-  console.log('Payload:', JSON.stringify(webhookData, null, 2));
-
-  // Always log the received webhook
+  console.log('📩 Webhook received:', event);
+  
   await appendWebhookLog({
-    received: true,
     event,
     book_uuid: webhookData.book_uuid,
     doc_uuid: webhookData.doc_uuid,
-    status: 'pending',
+    status: 'received',
     timestamp,
   });
 
-  // Only proceed with specific events
   const allowedEvents = ['document.ready', 'document.classified', 'document.verification_succeeded'];
+  
   if (!allowedEvents.includes(event)) {
     console.log('⚠️ Unhandled event, skipping');
-    return res.json({ message: 'Unhandled event type' });
+    return res.json({ message: 'Unhandled event' });
   }
 
   let accessToken;
@@ -177,13 +172,9 @@ app.post('/handler', async (req, res) => {
     });
     accessToken = tokenResp.access_token;
   } catch (err) {
-    console.error('❌ Failed to get access token:', err.message || err);
-    await appendWebhookLog({
-      event,
-      error: 'Failed to get access token',
-      timestamp,
-    });
-    return res.status(500).json({ error: 'Access token failed' });
+    console.error('❌ Token error:', err.message || err);
+    await appendWebhookLog({ event, error: 'token_error', timestamp });
+    return res.status(500).json({ error: 'Token failure' });
   }
 
   let bookData;
@@ -191,34 +182,25 @@ app.post('/handler', async (req, res) => {
     const getBookInfo = ocrolusBent('GET', accessToken);
     bookData = await getBookInfo(`/v1/book/info?book_uuid=${webhookData.book_uuid}`);
   } catch (err) {
-    console.error('❌ Failed to fetch book info:', err.message || err);
-    await appendWebhookLog({
-      event,
-      error: 'Book info fetch failed',
-      timestamp,
-    });
-    return res.status(500).json({ error: 'Book fetch failed' });
+    console.error('❌ Book info error:', err.message || err);
+    await appendWebhookLog({ event, error: 'book_info_error', timestamp });
+    return res.status(500).json({ error: 'Book info failure' });
   }
-
-  // Only allow WIDGET books
+  //const actualBook = bookData.book || bookData;
+  //bookData.book.book_type? 
+  //actualBook.book_type !== 'WIDGET';
   if (bookData.book_type !== 'WIDGET') {
-    console.log('❌ Not a widget book, ignoring');
+    console.log('📦 Skipped non-widget book');
     await appendWebhookLog({
       event,
       book_uuid: webhookData.book_uuid,
       ignored: true,
-      reason: 'Not a widget book',
-      book_type: bookData.book_type,
+      reason: 'non-widget book',
       timestamp,
     });
-    return res.json({ message: 'Not a widget book' });
+    return res.json({ message: 'Ignored non-widget book' });
   }
 
-  // If download needed later, use this:
-  // const download = await downloadOcrolus('GET', accessToken)(`/v2/document/download?doc_uuid=${webhookData.doc_uuid}`);
-  // await writeFile(`./data/ocrolus_${webhookData.doc_uuid}.pdf`, download);
-
-  // Log successful processed event
   await appendWebhookLog({
     event,
     book_uuid: webhookData.book_uuid,
@@ -234,13 +216,18 @@ app.post('/handler', async (req, res) => {
 
 app.get('/webhook-logs', async (req, res) => {
   try {
-    const content = await readFile(WEBHOOK_LOG_PATH, 'utf8')
-    const logs = JSON.parse(content)
-    res.json(logs)
+    const content = await readFile(WEBHOOK_LOG_PATH, 'utf8');
+    const logs = JSON.parse(content);
+
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    const recentLogs = logs.filter(log => new Date(log.timestamp).getTime() >= tenMinutesAgo);
+
+    res.json(recentLogs);
   } catch (err) {
-    res.json([])
+    console.error('❌ Failed to read webhook logs:', err);
+    res.json([]);
   }
-})
+});
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
