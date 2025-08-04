@@ -142,76 +142,83 @@ app.get('/books', async function (req, res) {
 })
 
 app.post('/handler', async (req, res) => {
-  const event = req.body.event_name;
+  const sender = req.headers['x-forwarded-for'];
   const webhookData = req.body;
+  const event = webhookData.event_name;
   const timestamp = new Date().toISOString();
 
-  console.log('📩 Webhook received:', event);
+  console.log('📩 Webhook received from', sender, 'event:', event);
   
-  await appendWebhookLog({
-    event,
-    book_uuid: webhookData.book_uuid,
-    doc_uuid: webhookData.doc_uuid,
-    status: 'received',
-    timestamp,
-  });
+  // IP allowlist check
+  if (!OCROLUS_IP_ALLOWLIST.includes(sender)) {
+    console.log('❌ Ignored sender: not in IP allowlist');
+    return res.sendStatus(401);
+  }
 
-  const allowedEvents = ['document.ready', 'document.classified', 'document.verification_succeeded'];
-  
-  if (!allowedEvents.includes(event)) {
-    console.log('⚠️ Unhandled event, skipping');
+  // Only handle ready/classified events
+  if (![DOCUMENT_READY, DOCUMENT_CLASSIFIED].includes(event)) {
+    console.log('⚠️ Event ignored:', event);
+    await appendWebhookLog({
+      event, status: 'ignored', reason: 'unsupported_event', timestamp
+    });
     return res.json({ message: 'Unhandled event' });
   }
 
-  let accessToken;
   try {
+    // Get Ocrolus API token
     const tokenResp = await api_issuer('/oauth/token', {
-      client_id: process.env.OCROLUS_API_CLIENT_ID,
+      client_id:  process.env.OCROLUS_API_CLIENT_ID,
       client_secret: process.env.OCROLUS_API_CLIENT_SECRET,
       grant_type: 'client_credentials',
     });
-    accessToken = tokenResp.access_token;
-  } catch (err) {
-    console.error('❌ Token error:', err.message || err);
-    await appendWebhookLog({ event, error: 'token_error', timestamp });
-    return res.status(500).json({ error: 'Token failure' });
-  }
+    const accessToken = tokenResp.access_token;
 
-  let bookData;
-  try {
+    // Fetch book info
     const getBookInfo = ocrolusBent('GET', accessToken);
-    bookData = await getBookInfo(`/v1/book/info?book_uuid=${webhookData.book_uuid}`);
-  } catch (err) {
-    console.error('❌ Book info error:', err.message || err);
-    await appendWebhookLog({ event, error: 'book_info_error', timestamp });
-    return res.status(500).json({ error: 'Book info failure' });
-  }
-  //const actualBook = bookData.book || bookData;
-  //bookData.book.book_type? 
-  //actualBook.book_type !== 'WIDGET';
-  if (bookData.book_type !== 'WIDGET') {
-    console.log('📦 Skipped non-widget book');
+    const bookResp = await getBookInfo(`/v1/book/info?book_uuid=${webhookData.book_uuid}`);
+    const bookData = bookResp.response;
+
+    if (bookData.book_type !== WIDGET_BOOK_TYPE) {
+      console.log('📦 Skipped non-widget book');
+      await appendWebhookLog({
+        event, book_uuid: webhookData.book_uuid,
+        ignored: true, reason: 'non-widget book', timestamp
+      });
+      return res.json({ message: 'Ignored non-widget book' });
+    }
+
+    // Download document
+    const downloadFile = downloadOcrolus('GET', accessToken);
+    const docBuffer = await downloadFile(`/v2/document/download?doc_uuid=${webhookData.doc_uuid}`);
+
+    const savePath = path.join(DATA_DIR, `${webhookData.doc_uuid}.pdf`);
+    await writeFile(savePath, docBuffer);
+    console.log(`✅ File saved: ${savePath}`);
+
+    // Log success
     await appendWebhookLog({
       event,
       book_uuid: webhookData.book_uuid,
-      ignored: true,
-      reason: 'non-widget book',
+      book_name: bookData.book_name || '',
+      doc_uuid: webhookData.doc_uuid,
+      doc_name: webhookData.doc_name || '',
+      file_path: savePath,
+      status: 'success',
       timestamp,
     });
-    return res.json({ message: 'Ignored non-widget book' });
+
+    res.json({ message: 'Document downloaded and logged' });
+
+  } catch (err) {
+    console.error('❌ Handler error:', err);
+    await appendWebhookLog({
+      event,
+      error: err.message || 'unknown_error',
+      status: 'failed',
+      timestamp,
+    });
+    res.status(500).json({ error: 'Processing failed' });
   }
-
-  await appendWebhookLog({
-    event,
-    book_uuid: webhookData.book_uuid,
-    book_name: bookData.book_name || '',
-    doc_uuid: webhookData.doc_uuid || webhookData.uploaded_doc_uuid || webhookData.mixed_uploaded_doc_uuid || '',
-    doc_name: webhookData.doc_name || '',
-    status: 'success',
-    timestamp,
-  });
-
-  res.sendStatus(200);
 });
 
 app.get('/webhook-logs', async (req, res) => {

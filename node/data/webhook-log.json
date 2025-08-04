@@ -149,5 +149,39 @@
     "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
     "ignored": true,
     "reason": "non-widget book"
+  },
+  {
+    "timestamp": "2025-08-04T21:45:44.756Z",
+    "event": "document.verification_succeeded",
+    "error": "INTERNAL SERVER ERROR",
+    "status": "failed"
+  },
+  {
+    "timestamp": "2025-08-04T21:45:45.502Z",
+    "event": "document.verification_succeeded",
+    "error": "INTERNAL SERVER ERROR",
+    "status": "failed"
+  },
+  {
+    "timestamp": "2025-08-04T21:51:46.756Z",
+    "event": "document.verification_succeeded",
+    "error": "INTERNAL SERVER ERROR",
+    "status": "failed"
+  },
+  {
+    "timestamp": "2025-08-04T21:51:48.955Z",
+    "event": "document.verification_succeeded",
+    "error": "INTERNAL SERVER ERROR",
+    "status": "failed"
+  },
+  {
+    "timestamp": "2025-08-04T22:04:25.850Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "book_name": "",
+    "doc_uuid": "319f37bc-1266-4829-a9aa-c6d603dcea38",
+    "doc_name": "",
+    "file_path": "data/319f37bc-1266-4829-a9aa-c6d603dcea38.pdf",
+    "status": "success"
   }
 ]
