@@ -183,5 +183,93 @@
     "doc_name": "",
     "file_path": "data/319f37bc-1266-4829-a9aa-c6d603dcea38.pdf",
     "status": "success"
+  },
+  {
+    "timestamp": "2025-08-04T23:48:11.154Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "book_name": "",
+    "doc_uuid": "738c36f7-75dd-40b0-9ad6-691f201513e3",
+    "doc_name": "",
+    "file_path": "data/738c36f7-75dd-40b0-9ad6-691f201513e3.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-04T23:50:40.168Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "a1e4b1eb-167c-4b78-9f04-533fe26500b7",
+    "book_name": "",
+    "doc_uuid": "3187f278-bc91-45bc-bf2f-6391bc8e79ef",
+    "doc_name": "",
+    "file_path": "data/3187f278-bc91-45bc-bf2f-6391bc8e79ef.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-05T21:01:56.470Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:04:00.225Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:05:08.831Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:05:45.061Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:06:54.185Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:07:03.572Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:09:06.604Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-05T21:23:03.835Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "8722880c-9ed3-498c-8f01-a05fb92db396",
+    "book_name": "",
+    "doc_uuid": "901af4b3-68a4-4113-9f1e-43aebbf2307e",
+    "doc_name": "",
+    "file_path": "data/901af4b3-68a4-4113-9f1e-43aebbf2307e.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-05T21:23:12.807Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "book_name": "",
+    "doc_uuid": "d6a34fa0-1a85-4de7-8d3a-662125f9fa47",
+    "doc_name": "",
+    "file_path": "data/d6a34fa0-1a85-4de7-8d3a-662125f9fa47.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-05T21:24:14.839Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
   }
 ]

@@ -74,72 +74,40 @@ function App() {
     return () => clearInterval(interval)
   }, [])
 
+  const getBookParams = () => {
+    const selected = bookList.find(b => b.name === selectedBook);
+    return selected
+      ? { customId: selected.xid || userKey, name: selected.name }
+      : { customId: userKey, name: bookName || 'Untitled Book' };
+  };
+
+  // Global token provider for widget
   useEffect(() => {
-    ;(window as any).getAuthToken = async () => {
-      const selected = bookList.find(book => book.name === selectedBook)
-
-      let customId = ''
-      let name = ''
-
-      if (selected) {
-        customId = selected.xid || userKey
-        name = selected.name
-      } else {
-        customId = userKey
-        name = bookName || 'Untitled Book'
-      }
-
+    (window as any).getAuthToken = async () => {
+      const { customId, name } = getBookParams()
       const res = await fetch('/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: userKey,
           custom_id: customId,
           bookName: name,
         }),
       })
-
       const json = await res.json()
       return json.accessToken
     }
   }, [userKey, selectedBook, bookName, bookList])
 
-  const handleGetToken = async () => {
-    const selected = bookList.find(book => book.name === selectedBook)
-
-    let customId = ''
-    let name = ''
-
-    if (selected) {
-      customId = selected.xid || userKey
-      name = selected.name
-    } else {
-      customId = userKey
-      name = bookName || 'Untitled Book'
-    }
-
-    const res = await fetch('/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: userKey,
-        custom_id: customId,
-        bookName: name,
-      }),
-    })
-
-    const json = await res.json()
-    console.log('New token acquired for:', customId)
-
+  // Re-init widget
+  const handleGetToken = () => {
     if ((window as any).ocrolus_script) {
-      (window as any).ocrolus_script('init')
-      console.log('Widget reinitialized')
+      (window as any).ocrolus_script('init');
+      console.log('Widget reinitialized');
+      setWidgetKey(prev => prev + 1);
     } else {
-      console.warn('ocrolus_script not found')
+      console.warn('ocrolus_script not found');
     }
-
-    setWidgetKey(prev => prev + 1)
-  }
+  };
 
   return (
     <Box sx={{ display: 'flex' }}>

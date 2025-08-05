@@ -100,12 +100,12 @@ app.use(jsonParser)
 app.use(cors())
 
 app.post('/token', function (request, response) {
-    const { userId: passedUserId, bookName } = request.body
+    const { custom_id, bookName } = request.body
 
-    console.log('Passed User Id', passedUserId)
+    console.log('Passed User Id', custom_id)
     console.log('Passed Book Name', bookName)
 
-    const finalUserId = passedUserId || 'default-user'
+    const finalUserId = custom_id || 'default-user'
 
     return issuer(`/v1/widget/${OCROLUS_WIDGET_UUID}/token`, {
         client_id: OCROLUS_CLIENT_ID,
@@ -133,7 +133,7 @@ app.get('/books', async function (req, res) {
 
         const getBooks = ocrolusBent('GET', tokenResp.access_token)
         const books = await getBooks('/v1/books?limit=50&order_by=created')
-
+        
         res.json(books)
     } catch (err) {
         console.error('Error fetching book list:', err)
@@ -239,7 +239,17 @@ app.get('/webhook-logs', async (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
 });
+/*
 
 const server = app.listen(PORT, function () {
     console.log('quickstart server listening on port ' + PORT)
 })
+*/
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, function () {
+    console.log('quickstart server listening on port ' + PORT)
+  });
+}
+
+module.exports = app; // Export for testing
