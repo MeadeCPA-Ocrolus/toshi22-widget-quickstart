@@ -203,6 +203,7 @@ function App() {
                     <Typography><strong>Book UUID:</strong> {log.book_uuid || 'N/A'}</Typography>
                     <Typography><strong>Document Name:</strong> {log.doc_name || 'N/A'}</Typography>
                     <Typography><strong>Document UUID:</strong> {log.doc_uuid || 'N/A'}</Typography>
+                    <Typography><strong>Owner Email:</strong> {log.owner_email || 'N/A'}</Typography>
                     {log.status && <Typography><strong>Status:</strong> {log.status}</Typography>}
                     {log.reason && <Typography><strong>Reason:</strong> {log.reason}</Typography>}
                     {log.file_path && <Typography><strong>Saved Path:</strong> {log.file_path}</Typography>}

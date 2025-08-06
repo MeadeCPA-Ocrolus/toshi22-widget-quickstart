@@ -271,5 +271,43 @@
     "event": "unsupported_event",
     "status": "ignored",
     "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-06T19:27:06.571Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "book_name": "Example Book",
+    "doc_uuid": "bcf3ade3-239e-4814-9bd8-e6cc1cab3ee0",
+    "doc_name": "",
+    "file_path": "data/bcf3ade3-239e-4814-9bd8-e6cc1cab3ee0.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-06T19:38:27.604Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "book_name": "Example Book",
+    "doc_uuid": "7b35a676-29e1-4e21-ab6f-e3d5e632944a",
+    "doc_name": "",
+    "owner_email": "",
+    "file_path": "data/7b35a676-29e1-4e21-ab6f-e3d5e632944a.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-06T19:48:58.665Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "1276aa56-6d54-4664-aa3a-f3b26ca71d4d",
+    "book_name": "Example Book",
+    "doc_uuid": "8721fc1c-4e62-460c-9ab4-6c542cee8551",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/8721fc1c-4e62-460c-9ab4-6c542cee8551.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-06T19:51:48.306Z",
+    "event": "unsupported_event",
+    "status": "ignored",
+    "reason": "unsupported_event"
   }
 ]

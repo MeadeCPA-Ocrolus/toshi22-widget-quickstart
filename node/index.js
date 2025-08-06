@@ -199,9 +199,10 @@ app.post('/handler', async (req, res) => {
     await appendWebhookLog({
       event,
       book_uuid: webhookData.book_uuid,
-      book_name: bookData.book_name || '',
+      book_name: bookData.name || '',
       doc_uuid: webhookData.doc_uuid,
       doc_name: webhookData.doc_name || '',
+      owner_email: bookData.owner_email || '',
       file_path: savePath,
       status: 'success',
       timestamp,
