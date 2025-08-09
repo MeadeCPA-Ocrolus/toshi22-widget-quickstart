@@ -309,5 +309,60 @@
     "event": "unsupported_event",
     "status": "ignored",
     "reason": "unsupported_event"
+  },
+  {
+    "timestamp": "2025-08-09T19:56:27.672Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "8722880c-9ed3-498c-8f01-a05fb92db396",
+    "book_name": "KeikosTest",
+    "doc_uuid": "3627cd6c-d70b-404c-b947-842c864d19a2",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/3627cd6c-d70b-404c-b947-842c864d19a2.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T20:47:11.903Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "8722880c-9ed3-498c-8f01-a05fb92db396",
+    "book_name": "KeikosTest",
+    "doc_uuid": "3a9c52e5-6396-4ed4-80cb-ada2a4db7da3",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/3a9c52e5-6396-4ed4-80cb-ada2a4db7da3.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T20:48:35.889Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "a1e4b1eb-167c-4b78-9f04-533fe26500b7",
+    "book_name": "demoBookTest8-4",
+    "doc_uuid": "eab3b38d-705d-4169-9a73-0a7a22c01be1",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/eab3b38d-705d-4169-9a73-0a7a22c01be1.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T21:10:44.976Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "a1e4b1eb-167c-4b78-9f04-533fe26500b7",
+    "book_name": "demoBookTest8-4",
+    "doc_uuid": "f7a1bf60-e478-4527-bb71-0cbfb775ce87",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/f7a1bf60-e478-4527-bb71-0cbfb775ce87.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T21:14:21.000Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "e3cb8ac2-71ad-4c44-bb78-ecdaca53354b",
+    "book_name": "test8-9",
+    "doc_uuid": "e7f62cea-5812-4cda-b886-1a78130ea1ba",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/e7f62cea-5812-4cda-b886-1a78130ea1ba.pdf",
+    "status": "success"
   }
 ]
