@@ -16,7 +16,15 @@ import {
   Divider,
   InputAdornment,
   AppBar,
-  Toolbar
+  Toolbar,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Stack
 } from '@mui/material'
 import {
   AccountBalance,
@@ -29,108 +37,16 @@ import {
   BookmarkBorder,
   CloudUpload,
   History,
-  EventNote
+  EventNote,
+  BusinessCenter,
+  Description,
+  Assignment
 } from '@mui/icons-material'
+
+import { professionalTheme } from './theme'
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-import IncomePrompt from 'Components/IncomePrompt'
 import './App.css'
-import Module from 'Components/Module'
-
-// Light theme
-const lightTheme = createTheme({
-  palette: {
-    primary: {
-      main: '#667eea',
-      light: '#94a3f7',
-      dark: '#3f51b5',
-    },
-    secondary: {
-      main: '#764ba2',
-      light: '#9c7bc7',
-      dark: '#5a3a7a',
-    },
-    success: {
-      main: '#4caf50',
-      light: '#81c784',
-      dark: '#388e3c',
-    },
-    background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
-    },
-  },
-  typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 700,
-      fontSize: '2.5rem',
-    },
-    h5: {
-      fontWeight: 700,
-      fontSize: '1.5rem',
-    },
-    h6: {
-      fontWeight: 600,
-    },
-  },
-  components: {
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: 16,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-          transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0 12px 48px rgba(0,0,0,0.15)',
-          },
-        },
-      },
-    },
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-          textTransform: 'none',
-          fontWeight: 600,
-          padding: '16px 24px',
-        },
-        contained: {
-          boxShadow: '0 8px 32px rgba(102, 126, 234, 0.3)',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0 12px 48px rgba(102, 126, 234, 0.4)',
-          },
-        },
-      },
-    },
-    MuiTextField: {
-      styleOverrides: {
-        root: {
-          '& .MuiOutlinedInput-root': {
-            borderRadius: 12,
-          },
-        },
-      },
-    },
-    MuiSelect: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-        },
-      },
-    },
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          backdropFilter: 'blur(10px)',
-        },
-      },
-    },
-  },
-})
 
 interface Book {
   name: string
@@ -176,7 +92,6 @@ function App() {
     fetchBooks()
   }, [])
 
-  // Original webhook polling implementation
   useEffect(() => {
     const fetchWebhookLogs = async () => {
       try {
@@ -200,7 +115,6 @@ function App() {
       : { customId: userKey, name: bookName || 'Untitled Book' };
   };
 
-  // Global token provider for widget
   useEffect(() => {
     (window as any).getAuthToken = async () => {
       const { customId, name } = getBookParams()
@@ -217,18 +131,14 @@ function App() {
     }
   }, [userKey, selectedBook, bookName, bookList])
 
-  // Handle book selection - Clear inputs when selecting existing book
   const handleBookSelection = (value: string) => {
     setSelectedBook(value)
-    
-    // If user selects an existing book, clear the new book creation inputs
     if (value !== '') {
       setUserKey('')
       setBookName('')
     }
   }
 
-  // Re-init widget
   const handleGetToken = () => {
     if ((window as any).ocrolus_script) {
       (window as any).ocrolus_script('init');
@@ -245,15 +155,15 @@ function App() {
       case 'SUCCEEDED':
       case 'COMPLETE':
       case 'COMPLETED':
-        return <CheckCircle sx={{ color: '#4caf50', fontSize: 20 }} />;
+        return <CheckCircle sx={{ color: '#2e7d32', fontSize: 16 }} />;
       case 'PROCESSING':
       case 'PENDING':
-        return <Schedule sx={{ color: '#ff9800', fontSize: 20 }} />;
+        return <Schedule sx={{ color: '#f57c00', fontSize: 16 }} />;
       case 'FAILED':
       case 'ERROR':
-        return <Error sx={{ color: '#f44336', fontSize: 20 }} />;
+        return <Error sx={{ color: '#c62828', fontSize: 16 }} />;
       default:
-        return <CheckCircle sx={{ color: '#4caf50', fontSize: 20 }} />; // Default to success for unknown
+        return <CheckCircle sx={{ color: '#2e7d32', fontSize: 16 }} />;
     }
   };
 
@@ -268,59 +178,41 @@ function App() {
     } else if (eventUpper.includes('PROCESSING')) {
       return 'warning';
     } else {
-      return 'info';
+      return 'default';
     }
   };
 
   return (
-    <ThemeProvider theme={lightTheme}>
+    <ThemeProvider theme={professionalTheme}>
       <CssBaseline />
-      <Box sx={{ flexGrow: 1 }}>
-        {/* Fixed Header - Simplified without bell/user icons */}
+      <Box sx={{ flexGrow: 1, bgcolor: 'background.default' }}>
+        {/* Professional Header */}
         <AppBar position="fixed" elevation={0}>
-          <Toolbar sx={{ py: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1 }}>
-              <Avatar sx={{ 
-                bgcolor: 'white', 
-                color: 'primary.main', 
-                width: 48, 
-                height: 48,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.1)'
-              }}>
-                <AccountBalance sx={{ fontSize: 28 }} />
-              </Avatar>
-              <Box>
-                <Typography variant="h5" sx={{ color: 'white', fontWeight: 700 }}>
-                  Tax Document Manager
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                  Professional Document Processing Suite
-                </Typography>
-              </Box>
-            </Box>
+          <Toolbar variant="dense" sx={{ minHeight: 48 }}>
+            <BusinessCenter sx={{ fontSize: 20, mr: 2, color: 'primary.main' }} />
+            <Typography variant="h6" sx={{ 
+              fontWeight: 600, 
+              fontSize: '1.5 rem',
+              color: 'text.primary',
+              flexGrow: 1 
+            }}>
+              Document Processing System
+            </Typography>
           </Toolbar>
         </AppBar>
 
-        {/* Main Content with top margin for fixed header */}
+        {/* Main Content */}
         <Box sx={{ 
-          pt: 10, // Space for fixed header
+          pt: 7, // Compact header spacing
           px: 3,
           pb: 3,
           minHeight: '100vh',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          bgcolor: 'background.default',
         }}>
           <Grid container spacing={3}>
-            {/* Book Management Card */}
+            {/* Configuration Panel */}
             <Grid item xs={12} md={6}>
-              <Card 
-                elevation={8}
-                sx={{ 
-                  height: '100%',
-                  background: 'linear-gradient(145deg, #ffffff 0%, #f8f9ff 100%)',
-                  position: 'relative',
-                  overflow: 'visible'
-                }}
-              >
+              <Card sx={{ height: '100%' }}>
                 <Box
                   sx={{
                     position: 'absolute',
@@ -333,143 +225,154 @@ function App() {
                     borderRadius: 2,
                     fontSize: '0.875rem',
                     fontWeight: 600,
-                    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
+                    boxShadow: '0 4px 12px rgba(21, 101, 192, 0.3)',
+                    zIndex: 1
                   }}
                 >
                   Step 1
                 </Box>
-                
-                <CardContent sx={{ p: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                    <Avatar sx={{ 
-                      bgcolor: 'primary.main',
-                      boxShadow: '0 4px 16px rgba(102, 126, 234, 0.3)'
-                    }}>
-                      <BookmarkBorder />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a1a1a' }}>
-                        Book Selection
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Choose existing book or create new
-                      </Typography>
+                <CardContent sx={{ p: 3 }}>
+                  <Stack sx={{ height: '100%' }} spacing={3}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Assignment sx={{ fontSize: 20, color: 'primary.main' }} />
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                          Book Selection
+                        </Typography>
+                        <Typography variant="body2" color= '#bdbdbd'>
+                          Choose existing book or create new
+                        </Typography>
+                      </Box>
                     </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <FormControl fullWidth>
-                      <InputLabel>Select Existing Book</InputLabel>
-                      <Select
-                        value={selectedBook}
-                        label="Select Existing Book"
-                        onChange={(e) => handleBookSelection(e.target.value)}
-                      >
-                        <MenuItem value="">
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Add sx={{ color: 'primary.main' }} />
-                            <em>Create New Book</em>
-                          </Box>
-                        </MenuItem>
-                        {bookList.map((book) => (
-                          <MenuItem key={book.id} value={book.name}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                              <BookmarkBorder sx={{ color: 'text.secondary' }} />
-                              <Box sx={{ flex: 1 }}>
-                                {book.name}
-                              </Box>
-                              <Chip label={book.xid} size="small" variant="outlined" />
+                    <Stack spacing={3} sx={{ flex: 1, justifyContent: 'center' }}>
+                      <FormControl fullWidth size="medium">
+                        <InputLabel sx={{ fontSize: '0.875rem'}}>
+                          Existing Client Book
+                        </InputLabel>
+                        <Select
+                          value={selectedBook}
+                          label="Existing Client Book"
+                          onChange={(e) => handleBookSelection(e.target.value)}
+                          sx={{ fontSize: '0.875rem' }}
+                        >
+                          <MenuItem value="">
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                              <Add sx={{ fontSize: 16, color: 'primary.main' }} />
+                              <Typography variant="body2">Create New Book</Typography>
                             </Box>
                           </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                          {bookList.map((book) => (
+                            <MenuItem key={book.id} value={book.name}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
+                                <Description sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="body2">{book.name}</Typography>
+                                </Box>
+                                <Chip 
+                                  label={book.xid} 
+                                  size="small" 
+                                  variant="outlined"
+                                  sx={{ fontSize: '0.7rem', height: 20 }}
+                                />
+                              </Box>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
 
-                    <Divider>
-                      <Chip label="OR CREATE NEW" size="small" />
-                    </Divider>
+                      <Divider sx={{ my: 1 }}>
+                        <Chip label="Or Create New Book" size="small" variant="outlined" />
+                      </Divider>
 
-                    <Input
-                      fullWidth
-                      placeholder="Custom ID (required)"
-                      value={userKey}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
-                      startAdornment={
-                        <InputAdornment position="start">
-                          <Person sx={{ color: 'text.secondary' }} />
-                        </InputAdornment>
-                      }
-                      sx={{
-                        px: 2,
-                        py: 1.5,
-                        border: '2px solid',
-                        borderColor: userKey ? 'primary.main' : 'rgba(0,0,0,0.12)',
-                        borderRadius: 3,
-                        '&:hover': {
-                          borderColor: 'primary.main',
-                        },
-                        '&.Mui-focused': {
-                          borderColor: 'primary.main',
+                      <Input
+                        disableUnderline
+                        fullWidth
+                        placeholder="Client ID (required)"
+                        value={userKey}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <Person sx={{ fontSize: 16, color: 'text.secondary' }} />
+                          </InputAdornment>
                         }
-                      }}
-                    />
-                    
-                    <Input
-                      fullWidth
-                      placeholder="Book Name"
-                      value={bookName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBookName(e.target.value)}
-                      startAdornment={
-                        <InputAdornment position="start">
-                          <BookmarkBorder sx={{ color: 'text.secondary' }} />
-                        </InputAdornment>
-                      }
-                      sx={{
-                        px: 2,
-                        py: 1.5,
-                        border: '2px solid',
-                        borderColor: 'rgba(0,0,0,0.12)',
-                        borderRadius: 3,
-                        '&:hover': {
-                          borderColor: 'primary.main',
-                        },
-                        '&.Mui-focused': {
-                          borderColor: 'primary.main',
+                        sx={{
+                          px: 1.5,
+                          py: 1.5,
+                          border: '1px solid',
+                          borderColor: userKey ? 'primary.main' : 'grey.300',
+                          borderRadius: 1,
+                          fontSize: '0.875rem',
+                          bgcolor: 'background.paper',
+                          '&:hover': {
+                            borderColor: 'primary.main',
+                          },
+                          '&.Mui-focused': {
+                            borderColor: 'primary.main',
+                            boxShadow: '0 0 0 2px rgba(21, 101, 192, 0.1)',
+                          }
+                        }}
+                      />
+                      
+                      <Input
+                        disableUnderline
+                        fullWidth
+                        placeholder="Book Name"
+                        value={bookName}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBookName(e.target.value)}
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <BookmarkBorder sx={{ fontSize: 16, color: 'text.secondary' }} />
+                          </InputAdornment>
                         }
-                      }}
-                    />
+                        sx={{
+                          px: 1.5,
+                          py: 1.5,
+                          border: '1px solid',
+                          borderColor: 'grey.300',
+                          borderRadius: 1,
+                          fontSize: '0.875rem',
+                          bgcolor: 'background.paper',
+                          '&:hover': {
+                            borderColor: 'primary.main',
+                          },
+                          '&.Mui-focused': {
+                            borderColor: 'primary.main',
+                            boxShadow: '0 0 0 2px rgba(21, 101, 192, 0.1)',
+                          }
+                        }}
+                      />
+                    </Stack>
 
                     <Button
                       variant="contained"
-                      size="large"
                       fullWidth
                       onClick={handleGetToken}
+                      disabled={!selectedBook && !userKey.trim()}
                       sx={{
-                        py: 2,
-                        fontSize: '1.1rem',
-                        fontWeight: 600,
-                        background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                        py: 1.5,
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        bgcolor: 'primary.light',
+                        '&:hover': {
+                          bgcolor: 'primary.dark',
+                        },
+                        '&:disabled': {
+                          bgcolor: 'grey.300',
+                          color: 'grey.500',
+                        }
                       }}
-                      startIcon={<CloudUpload />}
+                      startIcon={<CloudUpload sx={{ fontSize: 16 }} />}
                     >
-                      Initialize Document Upload
+                      Initialize Upload Session
                     </Button>
-                  </Box>
+                  </Stack>
                 </CardContent>
               </Card>
             </Grid>
 
-            {/* Widget Display Card */}
+            {/* Document Upload Panel */}
             <Grid item xs={12} md={6}>
-              <Card 
-                elevation={8}
-                sx={{ 
-                  height: '100%',
-                  background: 'linear-gradient(145deg, #ffffff 0%, #f0f4f8 100%)',
-                  position: 'relative',
-                  overflow: 'visible'
-                }}
-              >
+              <Card sx={{ height: '100%' }}>
                 <Box
                   sx={{
                     position: 'absolute',
@@ -482,121 +385,130 @@ function App() {
                     borderRadius: 2,
                     fontSize: '0.875rem',
                     fontWeight: 600,
-                    boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
+                    boxShadow: '0 4px 12px rgba(46, 125, 50, 0.3)',
+                    zIndex: 1
                   }}
                 >
                   Step 2
                 </Box>
-
-                <CardContent sx={{ p: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                    <Avatar sx={{ 
-                      bgcolor: 'success.main',
-                      boxShadow: '0 4px 16px rgba(76, 175, 80, 0.3)'
-                    }}>
-                      <Upload />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a1a1a' }}>
-                        Document Upload
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Ocrolus widget will load here
-                      </Typography>
-                    </Box>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                    <Upload sx={{ fontSize: 20, color: 'primary.main' }} />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Document Upload Interface
+                    </Typography>
                   </Box>
-
-                  {/* Widget Container - Clean, no placeholder */}
-                  <Box
-                    id="ocrolus-widget-frame"
-                    key={widgetKey}
-                    sx={{
-                      minHeight: 300,
-                      borderRadius: 2,
-                    }}
-                  />
+                    <Box
+                      id="ocrolus-widget-frame"
+                      key={widgetKey}
+                      sx={{
+                        minHeight: 400,
+                        borderRadius: 1,
+                        bgcolor: 'background.paper',
+                      }}
+                    />
                 </CardContent>
               </Card>
             </Grid>
 
-            {/* Activity Log Card */}
+            {/* Activity Log */}
             <Grid item xs={12}>
-              <Card 
-                elevation={8}
-                sx={{ 
-                  background: 'linear-gradient(145deg, #ffffff 0%, #f8f9ff 100%)'
-                }}
-              >
-                <CardContent sx={{ p: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                    <Avatar sx={{ 
-                      bgcolor: 'info.main',
-                      boxShadow: '0 4px 16px rgba(33, 150, 243, 0.3)'
-                    }}>
-                      <History />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a1a1a' }}>
-                        Webhook Event Logs
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Real-time webhook events and processing status
-                      </Typography>
-                    </Box>
+              <Card>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                    <History sx={{ fontSize: 20, color: 'primary.main' }} />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Processing Activity Log
+                    </Typography>
                   </Box>
 
                   {webhookLogs.length === 0 ? (
-                    <Typography>No webhook events yet.</Typography>
+                    <Paper 
+                      variant="outlined" 
+                      sx={{ 
+                        p: 4, 
+                        textAlign: 'center',
+                        bgcolor: 'grey.50',
+                        border: '1px solid #e0e0e0'
+                      }}
+                    >
+                      <History sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
+                      <Typography variant="body1" color="text.secondary">
+                        No processing events recorded
+                      </Typography>
+                      <Typography variant="body2" color="text.disabled">
+                        Document upload and processing events will appear here
+                      </Typography>
+                    </Paper>
                   ) : (
-                    <Grid container spacing={2}>
-                      {webhookLogs.map((log, idx) => (
-                        <Grid item xs={12} md={6} key={idx}>
-                          <Box
-                            sx={{
-                              p: 2,
-                              border: '1px solid #ccc',
-                              borderRadius: 2,
-                              bgcolor: 'white',
-                              boxShadow: 1,
-                              transition: 'transform 0.2s, box-shadow 0.2s',
-                              '&:hover': {
-                                transform: 'translateY(-2px)',
-                                boxShadow: 3
-                              }
-                            }}
-                          >
-                            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
-                              {getStatusIcon(log.status)}
-                              <Box sx={{ flex: 1 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                    <TableContainer component={Paper} variant="outlined">
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ bgcolor: 'grey.50' }}>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Event</TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Document</TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Book</TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Owner</TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Timestamp</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {webhookLogs.map((log, idx) => (
+                            <TableRow 
+                              key={idx} 
+                              sx={{ 
+                                '&:hover': { bgcolor: 'grey.50' },
+                                '&:last-child td': { border: 0 }
+                              }}
+                            >
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  {getStatusIcon(log.status)}
                                   <Chip 
-                                    label={log.event} 
+                                    label={log.status || 'Unknown'} 
                                     size="small" 
                                     color={getEventColor(log.event)}
-                                    icon={<EventNote />}
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.65rem', height: 20 }}
                                   />
                                 </Box>
-                                
-                                <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
                                   {log.event}
                                 </Typography>
-                                <Typography><strong>Book Name:</strong> {log.book_name || 'N/A'}</Typography>
-                                <Typography><strong>Book UUID:</strong> {log.book_uuid || 'N/A'}</Typography>
-                                <Typography><strong>Document Name:</strong> {log.doc_name || 'N/A'}</Typography>
-                                <Typography><strong>Document UUID:</strong> {log.doc_uuid || 'N/A'}</Typography>
-                                <Typography><strong>Owner Email:</strong> {log.owner_email || 'N/A'}</Typography>
-                                {log.status && <Typography><strong>Status:</strong> {log.status}</Typography>}
-                                {log.reason && <Typography><strong>Reason:</strong> {log.reason}</Typography>}
-                                {log.file_path && <Typography><strong>Saved Path:</strong> {log.file_path}</Typography>}
-                                <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-                                  Received at: {new Date(log.timestamp).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.primary">
+                                  {log.doc_name || 'N/A'}
                                 </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-                        </Grid>
-                      ))}
-                    </Grid>
+                                {log.doc_uuid && (
+                                  <Typography variant="caption" color="text.disabled">
+                                    {log.doc_uuid.substring(0, 8)}...
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {log.book_name || 'N/A'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {log.owner_email || 'N/A'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" color="text.secondary">
+                                  {new Date(log.timestamp).toLocaleString()}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   )}
                 </CardContent>
               </Card>

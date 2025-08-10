@@ -364,5 +364,49 @@
     "owner_email": "tosh.troyer@gmail.com",
     "file_path": "data/e7f62cea-5812-4cda-b886-1a78130ea1ba.pdf",
     "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T22:51:57.382Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "e3cb8ac2-71ad-4c44-bb78-ecdaca53354b",
+    "book_name": "test8-9",
+    "doc_uuid": "8a78bcd6-b17c-4562-b8c2-ecbdb2d61d86",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/8a78bcd6-b17c-4562-b8c2-ecbdb2d61d86.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T22:53:42.394Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "8722880c-9ed3-498c-8f01-a05fb92db396",
+    "book_name": "KeikosTest",
+    "doc_uuid": "383de92b-b5b7-43b0-96df-01db8d7784c0",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/383de92b-b5b7-43b0-96df-01db8d7784c0.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T22:55:05.412Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "e3cb8ac2-71ad-4c44-bb78-ecdaca53354b",
+    "book_name": "test8-9",
+    "doc_uuid": "38dfeee9-144f-4a41-8358-478a00ab1c9f",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/38dfeee9-144f-4a41-8358-478a00ab1c9f.pdf",
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-08-09T22:59:26.433Z",
+    "event": "document.verification_succeeded",
+    "book_uuid": "e3cb8ac2-71ad-4c44-bb78-ecdaca53354b",
+    "book_name": "test8-9",
+    "doc_uuid": "82340610-0070-4f71-8f3c-db20cf77a547",
+    "doc_name": "",
+    "owner_email": "tosh.troyer@gmail.com",
+    "file_path": "data/82340610-0070-4f71-8f3c-db20cf77a547.pdf",
+    "status": "success"
   }
 ]
