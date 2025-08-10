@@ -11,7 +11,6 @@ import {
   Card,
   CardContent,
   Chip,
-  Avatar,
   Grid,
   Divider,
   InputAdornment,
@@ -27,7 +26,6 @@ import {
   Stack
 } from '@mui/material'
 import {
-  AccountBalance,
   Add,
   Upload,
   CheckCircle,
@@ -37,17 +35,17 @@ import {
   BookmarkBorder,
   CloudUpload,
   History,
-  EventNote,
-  BusinessCenter,
   Description,
-  Assignment
+  Assignment,
+  MenuBook
 } from '@mui/icons-material'
 
 import { professionalTheme } from './theme'
+import ParticlesBackground from './Components/ParticlesBackground';
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import './App.css'
-
+ 
 interface Book {
   name: string
   id: number
@@ -62,6 +60,9 @@ function App() {
   const [bookList, setBookList] = useState<Book[]>([])
   const [selectedBook, setSelectedBook] = useState<string>('')
   const [webhookLogs, setWebhookLogs] = useState<any[]>([])
+  const [initializationStatus, setInitializationStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [initializedBookName, setInitializedBookName] = useState<string>('')
+  const [isInitializing, setIsInitializing] = useState(false)
 
   useEffect(() => {
     async function fetchBooks() {
@@ -137,16 +138,37 @@ function App() {
       setUserKey('')
       setBookName('')
     }
+    // Reset initialization status when changing book selection
+    setInitializationStatus('idle')
+    setIsInitializing(false)
   }
 
   const handleGetToken = () => {
+    if (isInitializing) return; // Prevent multiple calls
+    
+    setIsInitializing(true);
+    setInitializationStatus('idle'); // Reset status
+    
     if ((window as any).ocrolus_script) {
-      (window as any).ocrolus_script('init');
-      console.log('Widget reinitialized');
-      setWidgetKey(prev => prev + 1);
+      try {
+        (window as any).ocrolus_script('init');
+        console.log('Widget reinitialized');
+        setWidgetKey(prev => prev + 1);
+        
+        const { name } = getBookParams();
+        setInitializedBookName(name);
+        setInitializationStatus('success');
+      } catch (error) {
+        console.error('Widget initialization failed:', error);
+        setInitializationStatus('error');
+      }
     } else {
       console.warn('ocrolus_script not found');
+      setInitializationStatus('error');
     }
+    
+    // Reset the flag after a short delay
+    setTimeout(() => setIsInitializing(false), 500);
   };
 
   const getStatusIcon = (status: string) => {
@@ -185,24 +207,36 @@ function App() {
   return (
     <ThemeProvider theme={professionalTheme}>
       <CssBaseline />
-      <Box sx={{ flexGrow: 1, bgcolor: 'background.default' }}>
+      {/* Particles Background - positioned behind everything */}
+      <ParticlesBackground />
+      
+      {/* Main App Container */}
+      <Box sx={{ 
+        position: 'relative', 
+        zIndex: 1,
+        minHeight: '100vh',
+        backgroundColor: 'transparent' // Ensure transparency to show particles
+      }}>
         {/* Professional Header */}
-        <AppBar position="fixed" elevation={0}>
+        <AppBar position="fixed" elevation={0} sx={{ 
+          backgroundColor: 'rgba(255, 255, 255, 0.95)', // Semi-transparent to show particles
+          backdropFilter: 'blur(10px)', // Glassmorphism effect
+          borderBottom: '1px solid rgba(232, 231, 231, 0.47)'
+        }}>
           <Toolbar variant="dense" sx={{ minHeight: 48 }}>
-            {/* Replace BusinessCenter icon with your logo */}
             <Box
               component="img"
               src="https://img1.wsimg.com/isteam/ip/d51bd3c3-fbbd-490d-a10e-ec30e2b6f238/logo/adfe4ed3-f4cd-4ae4-b04c-6c47da461047.png/:/rs=h:160,cg:true,m/qt=q:95"
               alt="Company Logo"
               sx={{
-                height: 36, // Adjust height as needed
+                height: 36,
                 width: 'auto',
                 mr: 2,
                 objectFit: 'contain'
               }}
             />
             <Typography variant="h6" sx={{ 
-              fontWeight: 500, 
+              fontWeight: 600, 
               fontSize: '1.5rem',
               color: 'text.primary',
               flexGrow: 1 
@@ -214,43 +248,33 @@ function App() {
 
         {/* Main Content */}
         <Box sx={{ 
-          pt: 7, // Compact header spacing
+          pt: 7, // Back to original header padding
           px: 3,
           pb: 3,
           minHeight: '100vh',
-          bgcolor: 'background.default',
+          position: 'relative',
+          backgroundColor: 'transparent' // Ensure transparency
         }}>
           <Grid container spacing={3}>
             {/* Configuration Panel */}
-            <Grid item xs={12} md={6} sx={{ mt: 1.5 }}>
-              <Card sx={{ height: '100%', position: 'relative', overflow: 'visible'}}>
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: -10,
-                    right: 20,
-                    bgcolor: 'primary.light',
-                    color: 'white',
-                    px: 2,
-                    py: 1,
-                    borderRadius: 2,
-                    fontSize: '0.875rem',
-                    fontWeight: 600,
-                    boxShadow: '0 4px 12px rgba(21, 101, 192, 0.3)',
-                    zIndex: 1
-                  }}
-                >
-                  Step 1
-                </Box>
+            <Grid item xs={12} md={6} sx={{ mt: 4 }}>
+              <Card sx={{ 
+                height: '100%', 
+                position: 'relative', 
+                overflow: 'visible',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)', // Semi-transparent card
+                backdropFilter: 'blur(10px)', // Glassmorphism effect
+                border: '1px solid rgba(224, 224, 224, 0.3)'
+              }}>
                 <CardContent sx={{ p: 3 }}>
                   <Stack sx={{ height: '100%' }} spacing={3}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Assignment sx={{ fontSize: 25, color: 'primary.main' }} />
+                      <MenuBook sx={{ fontSize: 25, color: 'primary.main' }} />
                       <Box>
                         <Typography variant="h6" sx={{ fontWeight: 600 }}>
                           Book Selection
                         </Typography>
-                        <Typography variant="body2" color= '#bdbdbd'>
+                        <Typography variant="body2" color='#bdbdbd'>
                           Choose Existing Book or Create a New Book
                         </Typography>
                       </Box>
@@ -266,14 +290,15 @@ function App() {
                           onChange={(e) => handleBookSelection(e.target.value)}
                           sx={{
                             fontSize: '0.875rem',
+                            backgroundColor: 'rgba(255, 255, 255, 0.8)',
                             '& .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'grey.300', // Default border
+                              borderColor: 'grey.300',
                             },
                             '&:hover .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main', // Border on hover
+                              borderColor: 'primary.main',
                             },
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main', // Border on focus
+                              borderColor: 'primary.main',
                             }
                           }}
                         >
@@ -286,7 +311,7 @@ function App() {
                           {bookList.map((book) => (
                             <MenuItem key={book.id} value={book.name}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
-                                <Description sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                <MenuBook sx={{ fontSize: 16, color: 'text.secondary' }} />
                                 <Box sx={{ flex: 1 }}>
                                   <Typography variant="body2">{book.name}</Typography>
                                 </Box>
@@ -324,7 +349,7 @@ function App() {
                           borderColor: userKey ? 'primary.main' : 'grey.300',
                           borderRadius: 1,
                           fontSize: '0.875rem',
-                          bgcolor: 'background.paper',
+                          bgcolor: 'rgba(255, 255, 255, 0.8)',
                           '&:hover': {
                             borderColor: 'primary.main',
                           },
@@ -352,7 +377,7 @@ function App() {
                           borderColor: 'grey.300',
                           borderRadius: 1,
                           fontSize: '0.875rem',
-                          bgcolor: 'background.paper',
+                          bgcolor: 'rgba(255, 255, 255, 0.8)',
                           '&:hover': {
                             borderColor: 'primary.main',
                           },
@@ -385,32 +410,53 @@ function App() {
                     >
                       Initialize Upload Session
                     </Button>
+
+                    {/* Initialization Status Message - Single instance */}
+                    {initializationStatus !== 'idle' && (
+                      <Box 
+                        key={`status-${initializationStatus}-${Date.now()}`} // Force re-render with unique key
+                        sx={{ 
+                          p: 2, 
+                          borderRadius: 1, 
+                          bgcolor: initializationStatus === 'success' ? 'rgba(46, 125, 50, 0.1)' : 'rgba(198, 40, 40, 0.1)',
+                          border: `1px solid ${initializationStatus === 'success' ? '#2e7d32' : '#c62828'}`
+                        }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {initializationStatus === 'success' ? (
+                            <CheckCircle sx={{ color: '#2e7d32', fontSize: 16 }} />
+                          ) : (
+                            <Error sx={{ color: '#c62828', fontSize: 16 }} />
+                          )}
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              color: initializationStatus === 'success' ? '#2e7d32' : '#c62828',
+                              fontWeight: 500
+                            }}
+                          >
+                            {initializationStatus === 'success' 
+                              ? `Widget successfully initialized for Book: '${initializedBookName}'`
+                              : 'Initialization failed. Reload and try again.'
+                            }
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
                   </Stack>
                 </CardContent>
               </Card>
             </Grid>
 
             {/* Document Upload Panel */}
-            <Grid item xs={12} md={6} sx={{ mt: 1.5 }}>
-              <Card sx={{ height: '100%', position: 'relative', overflow: 'visible'}}>
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: -10,
-                    right: 20,
-                    bgcolor: 'primary.light',
-                    color: 'white',
-                    px: 2,
-                    py: 1,
-                    borderRadius: 2,
-                    fontSize: '0.875rem',
-                    fontWeight: 600,
-                    boxShadow: '0 4px 12px rgba(46, 125, 50, 0.3)',
-                    zIndex: 1
-                  }}
-                >
-                  Step 2
-                </Box>
+            <Grid item xs={12} md={6} sx={{ mt: 4 }}>
+              <Card sx={{ 
+                height: '100%', 
+                position: 'relative', 
+                overflow: 'visible',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)', // Semi-transparent card
+                backdropFilter: 'blur(10px)', // Glassmorphism effect
+                border: '1px solid rgba(224, 224, 224, 0.3)'
+              }}>
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                     <Upload sx={{ fontSize: 25, color: 'primary.main' }} />
@@ -418,26 +464,30 @@ function App() {
                       Document Upload Interface
                     </Typography>
                   </Box>
-                    <Box
-                      id="ocrolus-widget-frame"
-                      key={widgetKey}
-                      sx={{
-                        minHeight: 400,
-                        borderRadius: 1,
-                        bgcolor: 'background.paper',
-                      }}
-                    />
+                  <Box
+                    id="ocrolus-widget-frame"
+                    key={widgetKey}
+                    sx={{
+                      minHeight: 400,
+                      borderRadius: 1,
+                      bgcolor: 'rgba(255, 255, 255, 0.8)',
+                    }}
+                  />
                 </CardContent>
               </Card>
             </Grid>
 
             {/* Activity Log */}
             <Grid item xs={12}>
-              <Card>
+              <Card sx={{
+                backgroundColor: 'rgba(255, 255, 255, 0.93)', // Semi-transparent card
+                backdropFilter: 'blur(10px)', // Glassmorphism effect
+                border: '1px solid rgba(224, 224, 224, 0.3)'
+              }}>
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
                     <History sx={{ fontSize: 25, color: 'primary.main' }} />
-                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600}}>
                       Processing Activity Log
                     </Typography>
                   </Box>
@@ -448,8 +498,9 @@ function App() {
                       sx={{ 
                         p: 4, 
                         textAlign: 'center',
-                        bgcolor: 'grey.50',
-                        border: '1px solid #e0e0e0'
+                        bgcolor: 'rgba(245, 245, 245, 0.8)',
+                        border: '1px solid rgba(224, 224, 224, 0.5)',
+                        backdropFilter: 'blur(5px)'
                       }}
                     >
                       <History sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
@@ -461,10 +512,13 @@ function App() {
                       </Typography>
                     </Paper>
                   ) : (
-                    <TableContainer component={Paper} variant="outlined">
+                    <TableContainer component={Paper} variant="outlined" sx={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                      backdropFilter: 'blur(5px)'
+                    }}>
                       <Table size="small">
                         <TableHead>
-                          <TableRow sx={{ bgcolor: 'grey.50' }}>
+                          <TableRow sx={{ bgcolor: 'rgba(245, 245, 245, 0.8)' }}>
                             <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Status</TableCell>
                             <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Event</TableCell>
                             <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Document</TableCell>
@@ -478,7 +532,7 @@ function App() {
                             <TableRow 
                               key={idx} 
                               sx={{ 
-                                '&:hover': { bgcolor: 'grey.50' },
+                                '&:hover': { bgcolor: 'rgba(245, 245, 245, 0.5)' },
                                 '&:last-child td': { border: 0 }
                               }}
                             >
