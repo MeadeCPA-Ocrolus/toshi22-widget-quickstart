@@ -37,7 +37,8 @@ import {
   History,
   Description,
   Assignment,
-  MenuBook
+  MenuBook,
+  Warning
 } from '@mui/icons-material'
 
 import { professionalTheme } from './theme'
@@ -184,6 +185,8 @@ function App() {
       case 'FAILED':
       case 'ERROR':
         return <Error sx={{ color: '#c62828', fontSize: 16 }} />;
+      case 'IGNORED':
+        return <Warning sx={{ color: '#ff9800', fontSize: 16 }} />;
       default:
         return <CheckCircle sx={{ color: '#2e7d32', fontSize: 16 }} />;
     }
@@ -198,6 +201,8 @@ function App() {
     } else if (eventUpper.includes('FAIL') || eventUpper.includes('ERROR')) {
       return 'error';
     } else if (eventUpper.includes('PROCESSING')) {
+      return 'warning';
+    } else if (eventUpper.includes('IGNORED') || eventUpper.includes('UNSUPPORTED')) {
       return 'warning';
     } else {
       return 'default';
@@ -281,9 +286,9 @@ function App() {
                     </Box>
                     <Stack spacing={3} sx={{ flex: 1, justifyContent: 'center' }}>
                       <FormControl fullWidth size="medium">
-                        <InputLabel sx={{ fontSize: '0.875rem'}}>
-                          Existing Client Book
-                        </InputLabel>
+                        <Divider sx={{ my: 1 }}>
+                          <Chip label="Selecting Existing Book" size="small" variant="outlined" />
+                        </Divider>
                         <Select
                           value={selectedBook}
                           label="Existing Client Book"
