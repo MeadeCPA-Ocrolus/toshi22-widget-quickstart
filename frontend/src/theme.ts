@@ -4,8 +4,8 @@ export const professionalTheme = createTheme({
   palette: {
     primary: {
       main: '#287f43ff', // Professional green
-      light: '#2196f3',
-      dark: '#0d47a1',
+      light: '#2c8a4aff',
+      dark: 'rgba(32, 102, 54, 1)',
     },
     secondary: {
       main: '#37474f', // Professional gray-blue

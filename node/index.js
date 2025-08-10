@@ -227,8 +227,10 @@ app.get('/webhook-logs', async (req, res) => {
     const content = await readFile(WEBHOOK_LOG_PATH, 'utf8');
     const logs = JSON.parse(content);
 
-    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-    const recentLogs = logs.filter(log => new Date(log.timestamp).getTime() >= tenMinutesAgo);
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentLogs = logs
+      .filter(log => new Date(log.timestamp).getTime() >= oneWeekAgo)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     res.json(recentLogs);
   } catch (err) {

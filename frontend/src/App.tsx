@@ -104,7 +104,7 @@ function App() {
     }
 
     fetchWebhookLogs()
-    const interval = setInterval(fetchWebhookLogs, 5000)
+    const interval = setInterval(fetchWebhookLogs, 20000)
     return () => clearInterval(interval)
   }, [])
 
@@ -189,10 +189,21 @@ function App() {
         {/* Professional Header */}
         <AppBar position="fixed" elevation={0}>
           <Toolbar variant="dense" sx={{ minHeight: 48 }}>
-            <BusinessCenter sx={{ fontSize: 20, mr: 2, color: 'primary.main' }} />
+            {/* Replace BusinessCenter icon with your logo */}
+            <Box
+              component="img"
+              src="https://img1.wsimg.com/isteam/ip/d51bd3c3-fbbd-490d-a10e-ec30e2b6f238/logo/adfe4ed3-f4cd-4ae4-b04c-6c47da461047.png/:/rs=h:160,cg:true,m/qt=q:95"
+              alt="Company Logo"
+              sx={{
+                height: 36, // Adjust height as needed
+                width: 'auto',
+                mr: 2,
+                objectFit: 'contain'
+              }}
+            />
             <Typography variant="h6" sx={{ 
-              fontWeight: 600, 
-              fontSize: '1.5 rem',
+              fontWeight: 500, 
+              fontSize: '1.5rem',
               color: 'text.primary',
               flexGrow: 1 
             }}>
@@ -211,14 +222,14 @@ function App() {
         }}>
           <Grid container spacing={3}>
             {/* Configuration Panel */}
-            <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%' }}>
+            <Grid item xs={12} md={6} sx={{ mt: 1.5 }}>
+              <Card sx={{ height: '100%', position: 'relative', overflow: 'visible'}}>
                 <Box
                   sx={{
                     position: 'absolute',
                     top: -10,
                     right: 20,
-                    bgcolor: 'primary.main',
+                    bgcolor: 'primary.light',
                     color: 'white',
                     px: 2,
                     py: 1,
@@ -234,13 +245,13 @@ function App() {
                 <CardContent sx={{ p: 3 }}>
                   <Stack sx={{ height: '100%' }} spacing={3}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Assignment sx={{ fontSize: 20, color: 'primary.main' }} />
+                      <Assignment sx={{ fontSize: 25, color: 'primary.main' }} />
                       <Box>
                         <Typography variant="h6" sx={{ fontWeight: 600 }}>
                           Book Selection
                         </Typography>
                         <Typography variant="body2" color= '#bdbdbd'>
-                          Choose existing book or create new
+                          Choose Existing Book or Create a New Book
                         </Typography>
                       </Box>
                     </Box>
@@ -253,7 +264,18 @@ function App() {
                           value={selectedBook}
                           label="Existing Client Book"
                           onChange={(e) => handleBookSelection(e.target.value)}
-                          sx={{ fontSize: '0.875rem' }}
+                          sx={{
+                            fontSize: '0.875rem',
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              borderColor: 'grey.300', // Default border
+                            },
+                            '&:hover .MuiOutlinedInput-notchedOutline': {
+                              borderColor: 'primary.main', // Border on hover
+                            },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                              borderColor: 'primary.main', // Border on focus
+                            }
+                          }}
                         >
                           <MenuItem value="">
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -306,10 +328,9 @@ function App() {
                           '&:hover': {
                             borderColor: 'primary.main',
                           },
-                          '&.Mui-focused': {
-                            borderColor: 'primary.main',
-                            boxShadow: '0 0 0 2px rgba(21, 101, 192, 0.1)',
-                          }
+                          '&:focus-within': { boxShadow: 'none', outline: 'none' },
+                          '& input': { outline: 'none', boxShadow: 'none' },
+                          '& input:focus, & input:focus-visible': { outline: 'none', boxShadow: 'none' },
                         }}
                       />
                       
@@ -335,10 +356,9 @@ function App() {
                           '&:hover': {
                             borderColor: 'primary.main',
                           },
-                          '&.Mui-focused': {
-                            borderColor: 'primary.main',
-                            boxShadow: '0 0 0 2px rgba(21, 101, 192, 0.1)',
-                          }
+                          '&:focus-within': { boxShadow: 'none', outline: 'none' },
+                          '& input': { outline: 'none', boxShadow: 'none' },
+                          '& input:focus, & input:focus-visible': { outline: 'none', boxShadow: 'none' },
                         }}
                       />
                     </Stack>
@@ -349,10 +369,10 @@ function App() {
                       onClick={handleGetToken}
                       disabled={!selectedBook && !userKey.trim()}
                       sx={{
-                        py: 1.5,
+                        py: 2,
                         fontSize: '0.875rem',
                         fontWeight: 500,
-                        bgcolor: 'primary.light',
+                        bgcolor: 'primary.main',
                         '&:hover': {
                           bgcolor: 'primary.dark',
                         },
@@ -361,7 +381,7 @@ function App() {
                           color: 'grey.500',
                         }
                       }}
-                      startIcon={<CloudUpload sx={{ fontSize: 16 }} />}
+                      startIcon={<CloudUpload sx={{ fontSize: 20 }} />}
                     >
                       Initialize Upload Session
                     </Button>
@@ -371,14 +391,14 @@ function App() {
             </Grid>
 
             {/* Document Upload Panel */}
-            <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%' }}>
+            <Grid item xs={12} md={6} sx={{ mt: 1.5 }}>
+              <Card sx={{ height: '100%', position: 'relative', overflow: 'visible'}}>
                 <Box
                   sx={{
                     position: 'absolute',
                     top: -10,
                     right: 20,
-                    bgcolor: 'success.main',
+                    bgcolor: 'primary.light',
                     color: 'white',
                     px: 2,
                     py: 1,
@@ -393,7 +413,7 @@ function App() {
                 </Box>
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                    <Upload sx={{ fontSize: 20, color: 'primary.main' }} />
+                    <Upload sx={{ fontSize: 25, color: 'primary.main' }} />
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
                       Document Upload Interface
                     </Typography>
@@ -416,7 +436,7 @@ function App() {
               <Card>
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                    <History sx={{ fontSize: 20, color: 'primary.main' }} />
+                    <History sx={{ fontSize: 25, color: 'primary.main' }} />
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
                       Processing Activity Log
                     </Typography>
@@ -481,13 +501,8 @@ function App() {
                               </TableCell>
                               <TableCell>
                                 <Typography variant="body2" color="text.primary">
-                                  {log.doc_name || 'N/A'}
+                                  {log.doc_uuid ? `${log.doc_uuid.substring(0, 8)}...` : 'N/A'}
                                 </Typography>
-                                {log.doc_uuid && (
-                                  <Typography variant="caption" color="text.disabled">
-                                    {log.doc_uuid.substring(0, 8)}...
-                                  </Typography>
-                                )}
                               </TableCell>
                               <TableCell>
                                 <Typography variant="body2">
