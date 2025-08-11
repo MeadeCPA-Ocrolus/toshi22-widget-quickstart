@@ -1,3 +1,4 @@
+cat > .github/workflows/azure-static-web-apps-zealous-stone-091bace10.yml << 'EOF'
 name: Azure Static Web Apps CI/CD
 
 on:
@@ -40,9 +41,9 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ZEALOUS_STONE_091BACE10 }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "./frontend"
+          app_location: "./frontend/build"
           api_location: ""
-          output_location: "build"
+          output_location: ""
           skip_app_build: true
 
   close_pull_request_job:
@@ -56,3 +57,4 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ZEALOUS_STONE_091BACE10 }}
           action: "close"
+EOF
