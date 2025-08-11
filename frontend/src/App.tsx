@@ -68,7 +68,8 @@ function App() {
   useEffect(() => {
     async function fetchBooks() {
       try {
-        const response = await fetch('/books')
+        // Updated to call Azure Functions endpoint
+        const response = await fetch('/api/books')
         const data = await response.json()
         console.log('Fetched books:', data)
 
@@ -97,7 +98,8 @@ function App() {
   useEffect(() => {
     const fetchWebhookLogs = async () => {
       try {
-        const res = await fetch('/webhook-logs')
+        // Updated to call Azure Functions endpoint
+        const res = await fetch('/api/webhook-logs')
         const data = await res.json()
         setWebhookLogs(data)
       } catch (err) {
@@ -120,7 +122,8 @@ function App() {
   useEffect(() => {
     (window as any).getAuthToken = async () => {
       const { customId, name } = getBookParams()
-      const res = await fetch('/token', {
+      // Updated to call Azure Functions endpoint
+      const res = await fetch('/api/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
