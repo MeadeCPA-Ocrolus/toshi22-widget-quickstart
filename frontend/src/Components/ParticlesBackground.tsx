@@ -1,94 +1,93 @@
-import { useEffect } from 'react';
-
-declare global {
-  interface Window {
-    particlesJS: any;
-  }
-}
+import { useCallback } from "react";
+import Particles from "react-tsparticles";
+import { loadSlim } from "tsparticles-slim";
+import type { Container, Engine } from "tsparticles-engine";
 
 const ParticlesBackground = () => {
-  useEffect(() => {
-    // Wait for particles.js to load
-    const initParticles = () => {
-      if (window.particlesJS) {
-        window.particlesJS('particles-js', {
-          "particles": {
-            "number": {
-              "value": 300,
-              "density": {
-                "enable": true,
-                "value_area": 900
-              }
-            },
-            "color": {
-              "value": "#287f43"
-            },
-            "shape": {
-              "type": "circle"
-            },
-            "opacity": {
-              "value": 0.8,
-              "random": false
-            },
-            "size": {
-              "value": 3,
-              "random": true
-            },
-            "line_linked": {
-              "enable": true,
-              "distance": 150,
-              "color": "#287f43",
-              "opacity": 0.6,
-              "width": 2
-            },
-            "move": {
-              "enable": true,
-              "speed": 3,
-              "direction": "none",
-              "random": false,
-              "straight": false,
-              "out_mode": "out"
-            }
-          },
-          "interactivity": {
-            "detect_on": "canvas",
-            "events": {
-              "onhover": {
-                "enable": true,
-                "mode": "grab"
-              },
-              "onclick": {
-                "enable": true,
-                "mode": "push"
-              },
-              "resize": true
-            },
-            "modes": {
-              "grab": {
-                "distance": 200,
-                "line_linked": {
-                  "opacity": 1
-                }
-              },
-              "push": {
-                "particles_nb": 4
-              }
-            }
-          },
-          "retina_detect": true
-        });
-      } else {
-        // Retry if particles.js not loaded yet
-        setTimeout(initParticles, 100);
-      }
-    };
+  const particlesInit = useCallback(async (engine: Engine) => {
+    await loadSlim(engine);
+  }, []);
 
-    initParticles();
+  const particlesLoaded = useCallback(async (container: Container | undefined) => {
+    // This is optional, for debugging
   }, []);
 
   return (
-    <div 
-      id="particles-js" 
+    <Particles
+      id="tsparticles"
+      init={particlesInit}
+      loaded={particlesLoaded}
+      options={{
+        background: {
+          color: {
+            value: "#0a0a0a",
+          },
+        },
+        fpsLimit: 120,
+        interactivity: {
+          events: {
+            onClick: {
+              enable: true,
+              mode: "push",
+            },
+            onHover: {
+              enable: true,
+              mode: "grab",
+            },
+            resize: true,
+          },
+          modes: {
+            push: {
+              quantity: 4,
+            },
+            grab: {
+              distance: 200,
+              links: {
+                opacity: 1
+              }
+            },
+          },
+        },
+        particles: {
+          color: {
+            value: "#287f43",
+          },
+          links: {
+            color: "#287f43",
+            distance: 150,
+            enable: true,
+            opacity: 0.6,
+            width: 2,
+          },
+          move: {
+            direction: "none",
+            enable: true,
+            outModes: {
+              default: "out",
+            },
+            random: false,
+            speed: 3,
+            straight: false,
+          },
+          number: {
+            density: {
+              enable: true,
+              area: 900,
+            },
+            value: 300,
+          },
+          opacity: {
+            value: 0.8,
+          },
+          shape: {
+            type: "circle",
+          },
+          size: {
+            value: { min: 1, max: 3 },
+          },
+        },
+        detectRetina: true,
+      }}
       style={{
         position: 'fixed',
         top: 0,
