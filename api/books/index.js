@@ -1,5 +1,4 @@
-import { AzureFunction, Context, HttpRequest } from "@azure/functions";
-import * as bent from "bent";
+const bent = require('bent');
 
 const ENV = process.env.OCROLUS_WIDGET_ENVIRONMENT || 'production';
 const OCROLUS_API_URLS = { production: 'https://api.ocrolus.com' };
@@ -9,10 +8,10 @@ const OCROLUS_API = OCROLUS_API_URLS[ENV];
 const auth_issuer = API_ISSUER_URLS[ENV];
 
 const api_issuer = bent(auth_issuer, 'POST', 'json', 200);
-const ocrolusBent = (method: string, token: string) =>
+const ocrolusBent = (method, token) =>
     bent(`${OCROLUS_API}`, method, 'json', { authorization: `Bearer ${token}` });
 
-const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+module.exports = async function (context, req) {
     context.log('Books HTTP trigger function processed a request.');
 
     const corsHeaders = {
@@ -55,5 +54,3 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         };
     }
 };
-
-export default httpTrigger;

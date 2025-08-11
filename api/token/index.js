@@ -1,5 +1,4 @@
-import { AzureFunction, Context, HttpRequest } from "@azure/functions";
-import * as bent from "bent";
+const bent = require('bent');
 
 const ENV = process.env.OCROLUS_WIDGET_ENVIRONMENT || 'production';
 const OCROLUS_CLIENT_ID = process.env.OCROLUS_CLIENT_ID;
@@ -13,7 +12,7 @@ const TOKEN_ISSUER_URLS = {
 const token_issuer = TOKEN_ISSUER_URLS[ENV];
 const issuer = bent(token_issuer, 'POST', 'json', 200);
 
-const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+module.exports = async function (context, req) {
     context.log('Token HTTP trigger function processed a request.');
 
     const corsHeaders = {
@@ -65,5 +64,3 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         };
     }
 };
-
-export default httpTrigger;

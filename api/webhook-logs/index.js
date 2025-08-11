@@ -1,6 +1,4 @@
-import { AzureFunction, Context, HttpRequest } from "@azure/functions";
-
-const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+module.exports = async function (context, req) {
     context.log('Webhook-logs HTTP trigger function processed a request.');
 
     const corsHeaders = {
@@ -14,12 +12,10 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         return;
     }
 
-    // Return empty array for now - webhook handler will be implemented later
+    // Return empty array for now
     context.res = {
         status: 200,
         body: [],
         headers: { ...corsHeaders, "Content-Type": "application/json" }
     };
 };
-
-export default httpTrigger;
