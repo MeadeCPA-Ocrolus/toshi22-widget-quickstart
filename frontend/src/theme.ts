@@ -28,7 +28,7 @@ export const professionalTheme = createTheme({
       dark: '#8e0000',
     },
     background: {
-      default: '#1317818904',
+      default: '#f5f5f5',
       paper: '#ffffff',
     },
     grey: {

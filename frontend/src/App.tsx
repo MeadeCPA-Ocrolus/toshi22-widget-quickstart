@@ -231,10 +231,10 @@ function App() {
           <Toolbar variant="dense" sx={{ minHeight: 48 }}>
             <Box
               component="img"
-              src="https://img1.wsimg.com/isteam/ip/d51bd3c3-fbbd-490d-a10e-ec30e2b6f238/logo/adfe4ed3-f4cd-4ae4-b04c-6c47da461047.png/:/rs=h:160,cg:true,m/qt=q:95"
+              src="/images/tohsi_logo_png_trans_white.png"
               alt="Company Logo"
               sx={{
-                height: 36,
+                height: 40,
                 width: 'auto',
                 mr: 2,
                 objectFit: 'contain'
@@ -279,9 +279,6 @@ function App() {
                         <Typography variant="h6" sx={{ fontWeight: 600 }}>
                           Book Selection
                         </Typography>
-                        <Typography variant="body2" color='#bdbdbd'>
-                          Choose Existing Book or Create a New Book
-                        </Typography>
                       </Box>
                     </Box>
                     <Stack spacing={3} sx={{ flex: 1, justifyContent: 'center' }}>
@@ -291,26 +288,35 @@ function App() {
                         </Divider>
                         <Select
                           value={selectedBook}
-                          label="Existing Client Book"
                           onChange={(e) => handleBookSelection(e.target.value)}
+                          displayEmpty
+                          renderValue={(selected) => {
+                            if (!selected) {
+                              return (
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                                  Existing Client Book
+                                </Typography>
+                              );
+                            }
+                            return selected;
+                          }}
                           sx={{
                             fontSize: '0.875rem',
-                            backgroundColor: 'rgba(255, 255, 255, 0.8)',
                             '& .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'grey.300',
+                              borderColor: 'grey.300', // Default border
                             },
                             '&:hover .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main',
+                              borderColor: 'primary.main', // Border on hover
                             },
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main',
+                              borderColor: 'primary.main', // Border on focus
                             }
                           }}
                         >
                           <MenuItem value="">
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                              <Add sx={{ fontSize: 16, color: 'primary.main' }} />
-                              <Typography variant="body2">Create New Book</Typography>
+                              <MenuBook sx={{ fontSize: 16, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">Select existing book</Typography>
                             </Box>
                           </MenuItem>
                           {bookList.map((book) => (
