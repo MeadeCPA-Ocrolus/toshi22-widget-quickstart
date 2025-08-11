@@ -45,28 +45,71 @@ export const professionalTheme = createTheme({
     }
   },
   typography: {
-    fontFamily: '"Inter", "Segoe UI", "Roboto", "system-ui", sans-serif',
-    h4: {
-      fontWeight: 600,
+    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "system-ui", sans-serif',
+    h1: {
+      fontFamily: '"Inter", sans-serif',
+      fontWeight: 700,
+      fontSize: '2.5rem',
+      letterSpacing: '-0.025em',
+    },
+    h2: {
+      fontFamily: '"Inter", sans-serif',
+      fontWeight: 700,
       fontSize: '2rem',
+      letterSpacing: '-0.025em',
+    },
+    h3: {
+      fontFamily: '"Inter", sans-serif',
+      fontWeight: 600,
+      fontSize: '1.75rem',
+      letterSpacing: '-0.02em',
+    },
+    h4: {
+      fontFamily: '"Inter", sans-serif',
+      fontWeight: 600,
+      fontSize: '1.5rem',
       letterSpacing: '-0.02em',
     },
     h5: {
-      fontWeight: 600,
-      fontSize: '1.5rem',
-      letterSpacing: '-0.01em',
-    },
-    h6: {
+      fontFamily: '"Inter", sans-serif',
       fontWeight: 600,
       fontSize: '1.25rem',
+      letterSpacing: '-0.015em',
+    },
+    h6: {
+      fontFamily: '"Inter", sans-serif',
+      fontWeight: 600,
+      fontSize: '1.125rem',
+      letterSpacing: '-0.015em',
     },
     body1: {
+      fontFamily: '"Inter", sans-serif',
       fontSize: '0.875rem',
       lineHeight: 1.5,
+      fontWeight: 400,
     },
     body2: {
+      fontFamily: '"Inter", sans-serif',
       fontSize: '0.75rem',
       lineHeight: 1.43,
+      fontWeight: 400,
+    },
+    button: {
+      fontFamily: '"Inter", sans-serif',
+      fontWeight: 500,
+      textTransform: 'none',
+    },
+    caption: {
+      fontFamily: '"Inter", sans-serif',
+      fontSize: '0.75rem',
+      fontWeight: 400,
+    },
+    overline: {
+      fontFamily: '"Inter", sans-serif',
+      fontSize: '0.75rem',
+      fontWeight: 500,
+      textTransform: 'uppercase',
+      letterSpacing: '0.08333em',
     },
   },
   shape: {
@@ -89,6 +132,7 @@ export const professionalTheme = createTheme({
     MuiButton: {
       styleOverrides: {
         root: {
+          fontFamily: '"Inter", sans-serif',
           borderRadius: 4,
           textTransform: 'none',
           fontWeight: 500,
@@ -111,6 +155,7 @@ export const professionalTheme = createTheme({
         root: {
           '& .MuiOutlinedInput-root': {
             borderRadius: 4,
+            fontFamily: '"Inter", sans-serif',
           },
         },
       },
@@ -119,6 +164,7 @@ export const professionalTheme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 4,
+          fontFamily: '"Inter", sans-serif',
         },
       },
     },
@@ -138,6 +184,14 @@ export const professionalTheme = createTheme({
           borderRadius: 4,
           fontWeight: 500,
           fontSize: '0.75rem',
+          fontFamily: '"Inter", sans-serif',
+        },
+      },
+    },
+    MuiTypography: {
+      styleOverrides: {
+        root: {
+          fontFamily: '"Inter", sans-serif',
         },
       },
     },

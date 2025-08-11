@@ -241,6 +241,7 @@ function App() {
               }}
             />
             <Typography variant="h6" sx={{ 
+              fontFamily: '"Inter", sans-serif',
               fontWeight: 600, 
               fontSize: '1.5rem',
               color: 'text.primary',
@@ -293,7 +294,7 @@ function App() {
                           renderValue={(selected) => {
                             if (!selected) {
                               return (
-                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', fontFamily: '"Inter", sans-serif'}}>
                                   Existing Client Book
                                 </Typography>
                               );
@@ -360,6 +361,7 @@ function App() {
                           borderColor: userKey ? 'primary.main' : 'grey.300',
                           borderRadius: 1,
                           fontSize: '0.875rem',
+                          fontFamily: '"Inter", sans-serif',
                           bgcolor: 'rgba(255, 255, 255, 0.8)',
                           '&:hover': {
                             borderColor: 'primary.main',
@@ -388,6 +390,7 @@ function App() {
                           borderColor: 'grey.300',
                           borderRadius: 1,
                           fontSize: '0.875rem',
+                          fontFamily: '"Inter", sans-serif',
                           bgcolor: 'rgba(255, 255, 255, 0.8)',
                           '&:hover': {
                             borderColor: 'primary.main',
