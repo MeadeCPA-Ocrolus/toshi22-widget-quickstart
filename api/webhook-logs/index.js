@@ -1,5 +1,4 @@
 const { BlobServiceClient } = require('@azure/storage-blob');
-const { LogExit } = require('concurrently');
 
 // Helper function to convert stream to string
 async function streamToString(readableStream) {
