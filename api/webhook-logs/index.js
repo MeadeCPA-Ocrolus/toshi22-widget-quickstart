@@ -35,7 +35,7 @@ module.exports = async function (context, req) {
 
     try {
         const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-        const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME || 'documents';
+        const containerName = 'logs'; // CHANGED: Now reads from logs container
         
         if (!connectionString) {
             context.log.warn('AZURE_STORAGE_CONNECTION_STRING not configured, returning empty array');
