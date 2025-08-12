@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@azure/functions": "^3.0.0",
+    "@azure/storage-blob": "^12.17.0",
     "bent": "^7.3.12"
   }
 }

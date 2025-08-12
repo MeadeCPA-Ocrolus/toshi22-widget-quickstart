@@ -122,17 +122,41 @@ function App() {
   useEffect(() => {
     (window as any).getAuthToken = async () => {
       const { customId, name } = getBookParams()
-      // Updated to call Azure Functions endpoint
-      const res = await fetch('/api/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          custom_id: customId,
-          bookName: name,
-        }),
-      })
-      const json = await res.json()
-      return json.accessToken
+      
+      console.log('Requesting token for:', { customId, name })
+      
+      try {
+        // Updated to call Azure Functions endpoint
+        const res = await fetch('/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_id: customId,
+            bookName: name,
+          }),
+        })
+        
+        console.log('Token response status:', res.status)
+        
+        if (!res.ok) {
+          const errorText = await res.text()
+          console.error('Token request failed:', res.status, errorText)
+          throw new Error(`Token request failed: ${res.status} ${errorText}`)
+        }
+        
+        const json = await res.json()
+        console.log('Token response:', json)
+        
+        if (!json.accessToken) {
+          console.error('No access token in response:', json)
+          throw new Error('No access token received')
+        }
+        
+        return json.accessToken
+      } catch (error) {
+        console.error('Error getting auth token:', error)
+        throw error
+      }
     }
   }, [userKey, selectedBook, bookName, bookList])
 
@@ -173,6 +197,29 @@ function App() {
     
     // Reset the flag after a short delay
     setTimeout(() => setIsInitializing(false), 500);
+  };
+
+  const handleDownload = async (docUuid: string) => {
+    try {
+      const response = await fetch(`/api/download?doc_uuid=${docUuid}`);
+      const data = await response.json();
+      
+      if (response.ok && data.downloadUrl) {
+        // Create a temporary link and click it to start download
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.download = data.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        console.error('Download failed:', data.error);
+        alert('Download failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Download failed: ' + error.message);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -571,9 +618,25 @@ function App() {
                                 </Typography>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2" color="text.primary">
-                                  {log.doc_uuid ? `${log.doc_uuid.substring(0, 8)}...` : 'N/A'}
-                                </Typography>
+                                {log.doc_uuid ? (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography variant="body2" color="text.primary">
+                                      {log.doc_uuid.substring(0, 8)}...
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => handleDownload(log.doc_uuid)}
+                                      sx={{ minWidth: 'auto', px: 1, py: 0.5, fontSize: '0.7rem' }}
+                                    >
+                                      Download
+                                    </Button>
+                                  </Box>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">
+                                    N/A
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell>
                                 <Typography variant="body2">
