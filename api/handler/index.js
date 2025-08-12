@@ -3,11 +3,16 @@ const { BlobServiceClient } = require('@azure/storage-blob');
 
 const ENV = process.env.OCROLUS_WIDGET_ENVIRONMENT || 'production';
 
-
-
 const DOCUMENT_READY = 'document.verification_succeeded';
 const DOCUMENT_CLASSIFIED = 'document.classification_succeeded';
 const WIDGET_BOOK_TYPE = 'WIDGET';
+
+const OCROLUS_API_URLS = {
+    production: 'https://api.ocrolus.com',
+}
+const API_ISSUER_URLS = {
+    production: 'https://auth.ocrolus.com',
+}
 
 const OCROLUS_IP_ALLOWLIST = [
     '18.205.30.63',
@@ -19,17 +24,6 @@ const OCROLUS_IP_ALLOWLIST = [
     '54.164.238.206',
 ];
 
-const TOKEN_ISSUER_URLS = {
-    production: 'https://widget.ocrolus.com',
-}
-const OCROLUS_API_URLS = {
-    production: 'https://api.ocrolus.com',
-}
-const API_ISSUER_URLS = {
-    production: 'https://auth.ocrolus.com',
-}
-
-const token_issuer = TOKEN_ISSUER_URLS[ENV]
 const auth_issuer = API_ISSUER_URLS[ENV];
 const OCROLUS_API = OCROLUS_API_URLS[ENV];
 
@@ -38,7 +32,6 @@ const ocrolusBent = (method, token) =>
 const downloadOcrolus = (method, token) =>
     bent(`${OCROLUS_API}`, method, 'buffer', { authorization: `Bearer ${token}` });
 
-const issuer = bent(token_issuer, 'POST', 'json', 200)
 const api_issuer = bent(auth_issuer, 'POST', 'json', 200);
 
 
@@ -116,12 +109,13 @@ module.exports = async function (context, req) {
 
     console.log(' Webhook received from', sender, 'event:', event);
 
-    
-    if (!OCROLUS_IP_ALLOWLIST.includes(sender)) {
+    /*
+        if (!OCROLUS_IP_ALLOWLIST.includes(sender)) {
         console.log('Ignored sender: not in IP allowlist');
         context.res = { status: 401, body: "Unauthorized", headers: corsHeaders };
         return;
     }
+    */
 
     if (![DOCUMENT_READY, DOCUMENT_CLASSIFIED].includes(event)) {
         console.log('Event ignored:', event);
