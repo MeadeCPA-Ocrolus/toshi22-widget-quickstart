@@ -145,10 +145,10 @@ function App() {
   }
 
   const handleGetToken = () => {
-    if (isInitializing) return; // Prevent multiple calls
+    if (isInitializing) return;
     
     setIsInitializing(true);
-    setInitializationStatus('idle'); // Reset status
+    setInitializationStatus('idle');
     
     if ((window as any).ocrolus_script) {
       try {
@@ -167,7 +167,6 @@ function App() {
       console.warn('ocrolus_script not found');
       setInitializationStatus('error');
     }
-    
     // Reset the flag after a short delay
     setTimeout(() => setIsInitializing(false), 500);
   };
