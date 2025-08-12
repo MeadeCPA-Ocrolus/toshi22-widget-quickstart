@@ -34,31 +34,16 @@ module.exports = async function (context, req) {
     }
 
     try {
-        const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-        const containerName = 'documents'; // Same container as everything else
-        
-        if (!connectionString) {
-            context.log.warn('AZURE_STORAGE_CONNECTION_STRING not configured, returning empty array');
-            context.res = {
-                status: 200,
-                body: [],
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-            };
-            return;
-        }
+        const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
+        const blobClient = blobServiceClient.getContainerClient('logs').getBlockBlobClient('webhook-log.json');
 
-        const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
-        const containerClient = blobServiceClient.getContainerClient(containerName);
-        const logBlobName = 'webhook-log.json';
-        const blockBlobClient = containerClient.getBlockBlobClient(logBlobName);
 
-        // Try to download the logs file
         try {
-            const downloadResponse = await blockBlobClient.download();
+            const downloadResponse = await blobClient.download();
             const content = await streamToString(downloadResponse.readableStreamBody);
             const logs = JSON.parse(content);
 
-            // EXACT SAME filtering as original
+            //Filtered to one week
             const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
             const recentLogs = logs
                 .filter(log => new Date(log.timestamp).getTime() >= oneWeekAgo)
@@ -70,8 +55,7 @@ module.exports = async function (context, req) {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
             };
         } catch (err) {
-            // EXACT SAME as original: return empty array if no logs
-            console.log('❌ Failed to read webhook logs:', err);
+            console.log('Failed to read webhook logs:', err);
             context.res = {
                 status: 200,
                 body: [],
