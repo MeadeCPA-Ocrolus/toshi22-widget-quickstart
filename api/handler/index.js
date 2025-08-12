@@ -133,6 +133,8 @@ module.exports = async function (context, req) {
         return;
     }
 
+    // In the try block, replace the document download and storage section:
+
     try {
         // Get Ocrolus API token
         const tokenResp = await api_issuer('/oauth/token', {
@@ -162,10 +164,11 @@ module.exports = async function (context, req) {
         }
 
         // Download document
+        context.log('📄 Downloading document:', webhookData.doc_uuid);
         const downloadFile = downloadOcrolus('GET', accessToken);
         const docBuffer = await downloadFile(`/v2/document/download?doc_uuid=${webhookData.doc_uuid}`);
 
-        // Save to blob storage
+        // Save to blob storage with sanitized name
         const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
         const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME || 'documents';
         
@@ -177,22 +180,42 @@ module.exports = async function (context, req) {
         const containerClient = blobServiceClient.getContainerClient(containerName);
         await containerClient.createIfNotExists();
         
-        const blobName = `${webhookData.doc_uuid}.pdf`;
+        // FIX: Sanitize blob name - Azure requires lowercase and specific characters
+        const originalDocUuid = webhookData.doc_uuid;
+        const sanitizedDocUuid = originalDocUuid
+            .toLowerCase()
+            .replace(/[^a-z0-9\-\.]/g, '-')  // Replace invalid chars with hyphens
+            .replace(/--+/g, '-')           // Replace multiple hyphens with single
+            .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
+        
+        const blobName = `${sanitizedDocUuid}.pdf`;
+        
+        context.log('🔧 Original UUID:', originalDocUuid);
+        context.log('🔧 Sanitized blob name:', blobName);
+        
         const blockBlobClient = containerClient.getBlockBlobClient(blobName);
         
-        await blockBlobClient.upload(docBuffer, docBuffer.length, { overwrite: true });
+        await blockBlobClient.upload(docBuffer, docBuffer.length, { 
+            overwrite: true,
+            metadata: {
+                originalDocUuid: originalDocUuid,
+                bookUuid: webhookData.book_uuid,
+                uploadedAt: timestamp
+            }
+        });
 
         context.log(`✅ Document uploaded to blob storage: ${blobName}`);
 
-        // EXACT SAME log success as original
+        // Log success with original UUID for tracking
         await appendWebhookLog({
             event,
             book_uuid: webhookData.book_uuid,
             book_name: bookData.name || '',
-            doc_uuid: webhookData.doc_uuid,
+            doc_uuid: originalDocUuid,  // Keep original for tracking
             doc_name: webhookData.doc_name || '',
             owner_email: bookData.owner_email || '',
             file_path: `blob://${containerName}/${blobName}`,
+            blob_name: blobName,        // Add sanitized name for reference
             status: 'success',
             timestamp,
         });
@@ -205,12 +228,21 @@ module.exports = async function (context, req) {
 
     } catch (err) {
         context.log.error('❌ Handler error:', err);
+        context.log.error('❌ Error details:', {
+            message: err.message,
+            doc_uuid: webhookData.doc_uuid,
+            event: event
+        });
+        
         await appendWebhookLog({
             event,
+            book_uuid: webhookData.book_uuid,
+            doc_uuid: webhookData.doc_uuid,
             error: err.message || 'unknown_error',
             status: 'failed',
             timestamp,
         });
+        
         context.res = { 
             status: 500, 
             body: { error: 'Processing failed' }, 
