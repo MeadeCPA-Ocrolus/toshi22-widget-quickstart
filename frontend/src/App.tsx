@@ -45,7 +45,6 @@ import { professionalTheme } from './theme'
 import ParticlesBackground from './Components/ParticlesBackground';
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-import { initializeWidget, setupGlobalAuthToken } from './utils/widgetUtils'
 import './App.css'
  
 interface Book {
@@ -118,9 +117,20 @@ function App() {
       : { customId: userKey, name: bookName || 'Untitled Book' };
   };
 
-  // Setup global auth token function
   useEffect(() => {
-    setupGlobalAuthToken(getBookParams);
+    (window as any).getAuthToken = async () => {
+      const { customId, name } = getBookParams()
+      const res = await fetch('/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          custom_id: customId,
+          bookName: name,
+        }),
+      })
+      const json = await res.json()
+      return json.accessToken
+    }
   }, [userKey, selectedBook, bookName, bookList])
 
   const handleBookSelection = (value: string) => {
@@ -135,26 +145,31 @@ function App() {
   }
 
   const handleGetToken = () => {
-    initializeWidget(
-      getBookParams,
-      {
-        onStart: () => {
-          setIsInitializing(true);
-          setInitializationStatus('idle');
-        },
-        onSuccess: (bookName: string) => {
-          setInitializedBookName(bookName);
-          setInitializationStatus('success');
-          setIsInitializing(false);
-          setWidgetKey(prev => prev + 1);
-        },
-        onError: () => {
-          setInitializationStatus('error');
-          setIsInitializing(false);
-        }
-      },
-      isInitializing
-    );
+    if (isInitializing) return; // Prevent multiple calls
+    
+    setIsInitializing(true);
+    setInitializationStatus('idle'); // Reset status
+    
+    if ((window as any).ocrolus_script) {
+      try {
+        (window as any).ocrolus_script('init');
+        console.log('Widget reinitialized');
+        setWidgetKey(prev => prev + 1);
+        
+        const { name } = getBookParams();
+        setInitializedBookName(name);
+        setInitializationStatus('success');
+      } catch (error) {
+        console.error('Widget initialization failed:', error);
+        setInitializationStatus('error');
+      }
+    } else {
+      console.warn('ocrolus_script not found');
+      setInitializationStatus('error');
+    }
+    
+    // Reset the flag after a short delay
+    setTimeout(() => setIsInitializing(false), 500);
   };
 
   const getStatusIcon = (status: string) => {
