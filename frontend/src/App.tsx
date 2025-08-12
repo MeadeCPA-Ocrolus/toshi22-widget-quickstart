@@ -144,31 +144,45 @@ function App() {
     setIsInitializing(false)
   }
 
-  const handleGetToken = () => {
+  const handleGetToken = async () => {
     if (isInitializing) return;
     
     setIsInitializing(true);
     setInitializationStatus('idle');
     
-    if ((window as any).ocrolus_script) {
-      try {
-        (window as any).ocrolus_script('init');
-        console.log('Widget reinitialized');
-        setWidgetKey(prev => prev + 1);
-        
-        const { name } = getBookParams();
-        setInitializedBookName(name);
-        setInitializationStatus('success');
-      } catch (error) {
-        console.error('Widget initialization failed:', error);
-        setInitializationStatus('error');
-      }
-    } else {
+    if (!(window as any).ocrolus_script) {
       console.warn('ocrolus_script not found');
       setInitializationStatus('error');
+      setIsInitializing(false);
+      return;
     }
-    // Reset the flag after a short delay
-    setTimeout(() => setIsInitializing(false), 500);
+
+    try {
+      // Initialize the widget first
+      (window as any).ocrolus_script('init');
+      console.log('Widget initialization started');
+      setWidgetKey(prev => prev + 1);
+      
+      // Test that the existing getAuthToken function works
+      console.log('Validating token retrieval...');
+      const token = await (window as any).getAuthToken();
+      
+      if (!token) {
+        console.error('No token returned from getAuthToken');
+        throw new TypeError('No token returned from getAuthToken');
+      }
+      // Success
+      const { name } = getBookParams();
+      console.log('Widget initialization and token validation successful');
+      setInitializedBookName(name);
+      setInitializationStatus('success');
+      
+    } catch (error) {
+      console.error('Widget initialization or token validation failed:', error);
+      setInitializationStatus('error');
+    } finally {
+      setTimeout(() => setIsInitializing(false), 500);
+    }
   };
 
   const getStatusIcon = (status: string) => {
