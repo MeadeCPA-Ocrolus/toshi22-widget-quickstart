@@ -58,8 +58,7 @@ async function streamToString(readableStream) {
 async function appendWebhookLog(entry) {
     try {
         const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-        const containerName = 'logs';
-        //change webhook to logs container
+        const containerName = 'webhook-logs';
         
         if (!connectionString) {
             console.error('AZURE_STORAGE_CONNECTION_STRING not configured');

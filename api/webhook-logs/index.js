@@ -1,4 +1,5 @@
 const { BlobServiceClient } = require('@azure/storage-blob');
+const { LogExit } = require('concurrently');
 
 // Helper function to convert stream to string
 async function streamToString(readableStream) {
@@ -35,8 +36,7 @@ module.exports = async function (context, req) {
 
     try {
         const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
-        const blobClient = blobServiceClient.getContainerClient('logs').getBlockBlobClient('webhook-log.json');
-
+        let blobClient = blobServiceClient.getContainerClient('webhook-logs').getBlockBlobClient('webhook-log.json');
 
         try {
             const downloadResponse = await blobClient.download();
