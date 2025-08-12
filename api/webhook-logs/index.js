@@ -35,7 +35,7 @@ module.exports = async function (context, req) {
 
     try {
         const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-        const containerName = 'logs'; // CHANGED: Now reads from logs container
+        const containerName = 'logs';
         
         if (!connectionString) {
             context.log.warn('AZURE_STORAGE_CONNECTION_STRING not configured, returning empty array');
@@ -49,7 +49,7 @@ module.exports = async function (context, req) {
 
         const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
         const containerClient = blobServiceClient.getContainerClient(containerName);
-        const logBlobName = 'webhook-logs.json';
+        const logBlobName = 'webhook-log.json'; // SAME FILENAME as original
         const blockBlobClient = containerClient.getBlockBlobClient(logBlobName);
 
         // Try to download the logs file
@@ -58,7 +58,7 @@ module.exports = async function (context, req) {
             const content = await streamToString(downloadResponse.readableStreamBody);
             const logs = JSON.parse(content);
 
-            // Filter logs from the last week and sort by timestamp (newest first)
+            // EXACT SAME FILTERING as original
             const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
             const recentLogs = logs
                 .filter(log => new Date(log.timestamp).getTime() >= oneWeekAgo)
@@ -70,8 +70,8 @@ module.exports = async function (context, req) {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
             };
         } catch (err) {
-            // File doesn't exist yet or is empty
-            context.log('No webhook logs found or error reading logs:', err.message);
+            // EXACT SAME as original: return empty array if no logs
+            context.log('❌ Failed to read webhook logs:', err);
             context.res = {
                 status: 200,
                 body: [],
