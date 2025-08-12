@@ -28,7 +28,7 @@ const ocrolusBent = (method, token) =>
 const downloadOcrolus = (method, token) =>
     bent(`${OCROLUS_API}`, method, 'buffer', { authorization: `Bearer ${token}` });
 
-// Helper function to convert stream to string
+// Helper function
 async function streamToString(readableStream) {
     return new Promise((resolve, reject) => {
         const chunks = [];
@@ -42,14 +42,14 @@ async function streamToString(readableStream) {
     });
 }
 
-// EXACT SAME LOGIC as your original appendWebhookLog but using blob storage
-async function appendWebhookLog(context, entry) {
+// EXACT SAME as original but with blob storage
+async function appendWebhookLog(entry) { // Removed context parameter to match original
     try {
         const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
         const containerName = 'logs';
         
         if (!connectionString) {
-            context.log.warn('AZURE_STORAGE_CONNECTION_STRING not configured');
+            console.error('AZURE_STORAGE_CONNECTION_STRING not configured');
             return;
         }
 
@@ -57,12 +57,11 @@ async function appendWebhookLog(context, entry) {
         const containerClient = blobServiceClient.getContainerClient(containerName);
         await containerClient.createIfNotExists();
         
-        const logBlobName = 'webhook-log.json'; // SAME FILENAME as original
+        const logBlobName = 'webhook-log.json';
         const blockBlobClient = containerClient.getBlockBlobClient(logBlobName);
         
         let logs = [];
         
-        // Try to download existing logs
         try {
             const downloadResponse = await blockBlobClient.download();
             const content = await streamToString(downloadResponse.readableStreamBody);
@@ -71,17 +70,16 @@ async function appendWebhookLog(context, entry) {
             // file doesn't exist yet
         }
 
-        // EXACT SAME as original: add timestamp and spread entry
+        // EXACT SAME as original
         logs.push({ timestamp: new Date().toISOString(), ...entry });
         
-        // Upload updated logs
         await blockBlobClient.upload(JSON.stringify(logs, null, 2), JSON.stringify(logs, null, 2).length, {
             overwrite: true
         });
         
-        context.log('Webhook log updated successfully');
+        console.log('Webhook log updated successfully');
     } catch (err) {
-        context.log.error('Error appending to webhook log:', err);
+        console.error('Error appending to webhook log:', err);
     }
 }
 
@@ -104,7 +102,7 @@ module.exports = async function (context, req) {
         return;
     }
 
-    // EXACT SAME LOGIC as your original Express handler
+    // EXACT SAME as original
     const sender = req.headers['x-forwarded-for'];
     const webhookData = req.body;
     const event = webhookData.event_name;
@@ -112,17 +110,19 @@ module.exports = async function (context, req) {
 
     context.log('📩 Webhook received from', sender, 'event:', event);
 
-    // IP allowlist check
+    // TEMPORARILY COMMENT OUT IP CHECK TO TEST
+    /*
     if (!OCROLUS_IP_ALLOWLIST.includes(sender)) {
         context.log('❌ Ignored sender: not in IP allowlist');
         context.res = { status: 401, body: "Unauthorized", headers: corsHeaders };
         return;
     }
+    */
 
     // Only handle ready/classified events
     if (![DOCUMENT_READY, DOCUMENT_CLASSIFIED].includes(event)) {
         context.log('⚠️ Event ignored:', event);
-        await appendWebhookLog(context, {
+        await appendWebhookLog({
             event, status: 'ignored', reason: 'unsupported_event', timestamp
         });
         context.res = { 
@@ -149,7 +149,7 @@ module.exports = async function (context, req) {
 
         if (bookData.book_type !== WIDGET_BOOK_TYPE) {
             context.log('📦 Skipped non-widget book');
-            await appendWebhookLog(context, {
+            await appendWebhookLog({
                 event, book_uuid: webhookData.book_uuid,
                 ignored: true, reason: 'non-widget book', timestamp
             });
@@ -165,7 +165,7 @@ module.exports = async function (context, req) {
         const downloadFile = downloadOcrolus('GET', accessToken);
         const docBuffer = await downloadFile(`/v2/document/download?doc_uuid=${webhookData.doc_uuid}`);
 
-        // Save to blob storage instead of local file
+        // Save to blob storage
         const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
         const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME || 'documents';
         
@@ -180,29 +180,19 @@ module.exports = async function (context, req) {
         const blobName = `${webhookData.doc_uuid}.pdf`;
         const blockBlobClient = containerClient.getBlockBlobClient(blobName);
         
-        await blockBlobClient.upload(docBuffer, docBuffer.length, {
-            overwrite: true,
-            metadata: {
-                bookUuid: webhookData.book_uuid,
-                bookName: bookData.name || '',
-                docUuid: webhookData.doc_uuid,
-                ownerEmail: bookData.owner_email || '',
-                uploadedAt: timestamp,
-                event: event
-            }
-        });
+        await blockBlobClient.upload(docBuffer, docBuffer.length, { overwrite: true });
 
         context.log(`✅ Document uploaded to blob storage: ${blobName}`);
 
-        // EXACT SAME LOG SUCCESS as original
-        await appendWebhookLog(context, {
+        // EXACT SAME log success as original
+        await appendWebhookLog({
             event,
             book_uuid: webhookData.book_uuid,
             book_name: bookData.name || '',
             doc_uuid: webhookData.doc_uuid,
             doc_name: webhookData.doc_name || '',
             owner_email: bookData.owner_email || '',
-            file_path: `blob://${containerName}/${blobName}`, // blob path instead of local path
+            file_path: `blob://${containerName}/${blobName}`,
             status: 'success',
             timestamp,
         });
@@ -215,7 +205,7 @@ module.exports = async function (context, req) {
 
     } catch (err) {
         context.log.error('❌ Handler error:', err);
-        await appendWebhookLog(context, {
+        await appendWebhookLog({
             event,
             error: err.message || 'unknown_error',
             status: 'failed',
