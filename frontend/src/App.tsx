@@ -64,6 +64,7 @@ function App() {
   const [initializationStatus, setInitializationStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [initializedBookName, setInitializedBookName] = useState<string>('')
   const [isInitializing, setIsInitializing] = useState(false)
+  const [bookSearchText, setBookSearchText] = useState('')
 
   useEffect(() => {
     async function fetchBooks() {
@@ -116,6 +117,10 @@ function App() {
       ? { customId: selected.xid || userKey, name: selected.name }
       : { customId: userKey, name: bookName || 'Untitled Book' };
   };
+  const filteredBooks = bookList.filter(book => 
+    book.name.toLowerCase().includes(bookSearchText.toLowerCase()) ||
+    (book.xid && book.xid.toLowerCase().includes(bookSearchText.toLowerCase()))
+  )
 
   useEffect(() => {
     (window as any).getAuthToken = async () => {
@@ -300,6 +305,30 @@ function App() {
                         <Divider sx={{ my: 1 }}>
                           <Chip label="Selecting Existing Book" size="small" variant="outlined" />
                         </Divider>
+                        
+                        {/* Search Input */}
+                        <Input
+                          disableUnderline
+                          fullWidth
+                          placeholder="Search books..."
+                          value={bookSearchText}
+                          onChange={(e) => setBookSearchText(e.target.value)}
+                          sx={{
+                            px: 1.5,
+                            py: 1,
+                            mb: 1,
+                            border: '1px solid',
+                            borderColor: 'grey.300',
+                            borderRadius: 1,
+                            fontSize: '0.875rem',
+                            fontFamily: '"Inter", sans-serif',
+                            bgcolor: 'rgba(255, 255, 255, 0.8)',
+                            '&:hover': {
+                              borderColor: 'primary.main',
+                            },
+                          }}
+                        />
+                        
                         <Select
                           value={selectedBook}
                           onChange={(e) => handleBookSelection(e.target.value)}
@@ -317,13 +346,13 @@ function App() {
                           sx={{
                             fontSize: '0.875rem',
                             '& .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'grey.300', // Default border
+                              borderColor: 'grey.300',
                             },
                             '&:hover .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main', // Border on hover
+                              borderColor: 'primary.main',
                             },
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main', // Border on focus
+                              borderColor: 'primary.main',
                             }
                           }}
                         >
@@ -333,7 +362,7 @@ function App() {
                               <Typography variant="body2" color="text.secondary">Select existing book</Typography>
                             </Box>
                           </MenuItem>
-                          {bookList.map((book) => (
+                          {filteredBooks.map((book) => (
                             <MenuItem key={book.id} value={book.name}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
                                 <MenuBook sx={{ fontSize: 16, color: 'text.secondary' }} />
@@ -349,6 +378,13 @@ function App() {
                               </Box>
                             </MenuItem>
                           ))}
+                          {filteredBooks.length === 0 && bookSearchText && (
+                            <MenuItem disabled>
+                              <Typography variant="body2" color="text.secondary">
+                                No books found matching "{bookSearchText}"
+                              </Typography>
+                            </MenuItem>
+                          )}
                         </Select>
                       </FormControl>
 
