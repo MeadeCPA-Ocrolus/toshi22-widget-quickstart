@@ -25,6 +25,7 @@ import {
   TableRow,
   Stack
 } from '@mui/material'
+import { Autocomplete, TextField } from '@mui/material'
 import {
   Add,
   Upload,
@@ -42,7 +43,7 @@ import {
 } from '@mui/icons-material'
 
 import { professionalTheme } from './theme'
-import ParticlesBackground from './Components/ParticlesBackground';
+import ParticlesBackground from './Components/ParticlesBackground'
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import './App.css'
@@ -65,6 +66,8 @@ function App() {
   const [initializedBookName, setInitializedBookName] = useState<string>('')
   const [isInitializing, setIsInitializing] = useState(false)
   const [bookSearchText, setBookSearchText] = useState('')
+  const [selectedBookObject, setSelectedBookObject] = useState<Book | null>(null)
+
 
   useEffect(() => {
     async function fetchBooks() {
@@ -306,86 +309,56 @@ function App() {
                           <Chip label="Selecting Existing Book" size="small" variant="outlined" />
                         </Divider>
                         
-                        {/* Search Input */}
-                        <Input
-                          disableUnderline
-                          fullWidth
-                          placeholder="Search books..."
-                          value={bookSearchText}
-                          onChange={(e) => setBookSearchText(e.target.value)}
-                          sx={{
-                            px: 1.5,
-                            py: 1,
-                            mb: 1,
-                            border: '1px solid',
-                            borderColor: 'grey.300',
-                            borderRadius: 1,
-                            fontSize: '0.875rem',
-                            fontFamily: '"Inter", sans-serif',
-                            bgcolor: 'rgba(255, 255, 255, 0.8)',
-                            '&:hover': {
-                              borderColor: 'primary.main',
-                            },
+                        <Autocomplete
+                          value={selectedBookObject}
+                          onChange={(event, newValue) => {
+                            setSelectedBookObject(newValue);
+                            handleBookSelection(newValue ? newValue.name : '');
                           }}
-                        />
-                        
-                        <Select
-                          value={selectedBook}
-                          onChange={(e) => handleBookSelection(e.target.value)}
-                          displayEmpty
-                          renderValue={(selected) => {
-                            if (!selected) {
-                              return (
-                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', fontFamily: '"Inter", sans-serif'}}>
-                                  Existing Client Book
-                                </Typography>
-                              );
-                            }
-                            return selected;
-                          }}
-                          sx={{
-                            fontSize: '0.875rem',
-                            '& .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'grey.300',
-                            },
-                            '&:hover .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main',
-                            },
-                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                              borderColor: 'primary.main',
-                            }
-                          }}
-                        >
-                          <MenuItem value="">
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          options={bookList}
+                          getOptionLabel={(option) => option.name}
+                          renderOption={(props, option) => (
+                            <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
                               <MenuBook sx={{ fontSize: 16, color: 'text.secondary' }} />
-                              <Typography variant="body2" color="text.secondary">Select existing book</Typography>
-                            </Box>
-                          </MenuItem>
-                          {filteredBooks.map((book) => (
-                            <MenuItem key={book.id} value={book.name}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
-                                <MenuBook sx={{ fontSize: 16, color: 'text.secondary' }} />
-                                <Box sx={{ flex: 1 }}>
-                                  <Typography variant="body2">{book.name}</Typography>
-                                </Box>
-                                <Chip 
-                                  label={book.xid} 
-                                  size="small" 
-                                  variant="outlined"
-                                  sx={{ fontSize: '0.7rem', height: 20 }}
-                                />
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2">{option.name}</Typography>
                               </Box>
-                            </MenuItem>
-                          ))}
-                          {filteredBooks.length === 0 && bookSearchText && (
-                            <MenuItem disabled>
-                              <Typography variant="body2" color="text.secondary">
-                                No books found matching "{bookSearchText}"
-                              </Typography>
-                            </MenuItem>
+                              <Chip 
+                                label={option.xid || 'No ID'} 
+                                size="small" 
+                                variant="outlined"
+                                sx={{ fontSize: '0.7rem', height: 20 }}
+                              />
+                            </Box>
                           )}
-                        </Select>
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              placeholder="Search and select existing book..."
+                              variant="outlined"
+                              size="medium"
+                              sx={{
+                                '& .MuiOutlinedInput-root': {
+                                  fontSize: '0.875rem',
+                                  fontFamily: '"Inter", sans-serif',
+                                  '& fieldset': {
+                                    borderColor: 'grey.300',
+                                  },
+                                  '&:hover fieldset': {
+                                    borderColor: 'primary.main',
+                                  },
+                                  '&.Mui-focused fieldset': {
+                                    borderColor: 'primary.main',
+                                  },
+                                }
+                              }}
+                            />
+                          )}
+                          noOptionsText="No books found"
+                          clearOnBlur={false}
+                          selectOnFocus
+                          handleHomeEndKeys
+                        />
                       </FormControl>
 
                       <Divider sx={{ my: 1 }}>
