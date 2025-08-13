@@ -173,7 +173,7 @@ function App() {
       }
       // Success
       const { name } = getBookParams();
-      console.log('Widget initialization and token validation successful');
+      console.log('Token initialization and validation successful.');
       setInitializedBookName(name);
       setInitializationStatus('success');
       
