@@ -110,11 +110,11 @@ function App() {
   }
 
   const handleLogin = () => {
-    window.location.href = '/login'
+    window.location.href = '/.auth/login/aad'
   }
 
   const handleLogout = () => {
-    window.location.href = '/logout'
+    window.location.href = '/.auth/logout'
   }
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
