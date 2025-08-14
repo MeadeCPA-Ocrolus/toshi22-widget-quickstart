@@ -100,7 +100,6 @@ function App() {
         if (authData.clientPrincipal) {
           setUserInfo(authData.clientPrincipal)
           setIsAuthenticated(true)
-          setUserKey(authData.clientPrincipal.userId) // Use authenticated user ID as default
         }
       }
     } catch (error) {
@@ -208,7 +207,7 @@ function App() {
   const handleBookSelection = (value: string) => {
     setSelectedBook(value)
     if (value !== '') {
-      setUserKey(userInfo?.userId || '')
+      setUserKey('')
       setBookName('')
     }
     setInitializationStatus('idle')
@@ -512,7 +511,7 @@ function App() {
                       <Input
                         disableUnderline
                         fullWidth
-                        placeholder="Client ID (auto-filled from login)"
+                        placeholder="Client ID (required for new books)"
                         value={userKey}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
                         startAdornment={
