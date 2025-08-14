@@ -23,7 +23,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Stack
+  Stack,
+  Avatar,
+  Menu,
+  MenuItem as MenuItemComponent,
+  IconButton
 } from '@mui/material'
 import { Autocomplete, TextField } from '@mui/material'
 import {
@@ -39,7 +43,9 @@ import {
   Description,
   Assignment,
   MenuBook,
-  Warning
+  Warning,
+  AccountCircle,
+  ExitToApp
 } from '@mui/icons-material'
 
 import { professionalTheme } from './theme'
@@ -55,6 +61,13 @@ interface Book {
   xid: string | null
 }
 
+interface UserInfo {
+  userId: string
+  userDetails: string
+  userRoles: string[]
+  claims: any[]
+}
+
 function App() {
   const [userKey, setUserKey] = useState('')
   const [bookName, setBookName] = useState('')
@@ -67,9 +80,55 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(false)
   const [bookSearchText, setBookSearchText] = useState('')
   const [selectedBookObject, setSelectedBookObject] = useState<Book | null>(null)
+  
+  // Authentication state
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
+  // Check authentication status on component mount
+  useEffect(() => {
+    checkAuthStatus()
+  }, [])
+
+  const checkAuthStatus = async () => {
+    try {
+      const response = await fetch('/.auth/me')
+      if (response.ok) {
+        const authData = await response.json()
+        if (authData.clientPrincipal) {
+          setUserInfo(authData.clientPrincipal)
+          setIsAuthenticated(true)
+          setUserKey(authData.clientPrincipal.userId) // Use authenticated user ID as default
+        }
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleLogin = () => {
+    window.location.href = '/login'
+  }
+
+  const handleLogout = () => {
+    window.location.href = '/logout'
+  }
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget)
+  }
+
+  const handleMenuClose = () => {
+    setAnchorEl(null)
+  }
 
   useEffect(() => {
+    if (!isAuthenticated) return // Only fetch books if authenticated
+    
     async function fetchBooks() {
       try {
         const response = await fetch('/api/books')
@@ -96,9 +155,11 @@ function App() {
     }
 
     fetchBooks()
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
+    if (!isAuthenticated) return // Only fetch webhook logs if authenticated
+    
     const fetchWebhookLogs = async () => {
       try {
         const res = await fetch('/api/webhook-logs')
@@ -112,7 +173,7 @@ function App() {
     fetchWebhookLogs()
     const interval = setInterval(fetchWebhookLogs, 20000)
     return () => clearInterval(interval)
-  }, [])
+  }, [isAuthenticated])
 
   const getBookParams = () => {
     const selected = bookList.find(b => b.name === selectedBook);
@@ -120,12 +181,15 @@ function App() {
       ? { customId: selected.xid || userKey, name: selected.name }
       : { customId: userKey, name: bookName || 'Untitled Book' };
   };
+
   const filteredBooks = bookList.filter(book => 
     book.name.toLowerCase().includes(bookSearchText.toLowerCase()) ||
     (book.xid && book.xid.toLowerCase().includes(bookSearchText.toLowerCase()))
   )
 
   useEffect(() => {
+    if (!isAuthenticated) return
+    
     (window as any).getAuthToken = async () => {
       const { customId, name } = getBookParams()
       const res = await fetch('/api/token', {
@@ -139,15 +203,14 @@ function App() {
       const json = await res.json()
       return json.accessToken
     }
-  }, [userKey, selectedBook, bookName, bookList])
+  }, [userKey, selectedBook, bookName, bookList, isAuthenticated])
 
   const handleBookSelection = (value: string) => {
     setSelectedBook(value)
     if (value !== '') {
-      setUserKey('')
+      setUserKey(userInfo?.userId || '')
       setBookName('')
     }
-    // Reset initialization status when changing book selection
     setInitializationStatus('idle')
     setIsInitializing(false)
   }
@@ -166,12 +229,10 @@ function App() {
     }
 
     try {
-      // Initialize the widget first
       (window as any).ocrolus_script('init');
       console.log('Widget initialization started');
       setWidgetKey(prev => prev + 1);
       
-      // Test that the existing getAuthToken function works
       console.log('Validating token retrieval...');
       const token = await (window as any).getAuthToken();
       
@@ -179,7 +240,7 @@ function App() {
         console.error('No token returned from getAuthToken');
         throw new TypeError('No token returned from getAuthToken');
       }
-      // Success
+      
       const { name } = getBookParams();
       console.log('Token initialization and validation successful.');
       setInitializedBookName(name);
@@ -230,23 +291,82 @@ function App() {
     }
   };
 
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <ThemeProvider theme={professionalTheme}>
+        <CssBaseline />
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          minHeight: '100vh',
+          backgroundColor: '#f5f5f5'
+        }}>
+          <Typography variant="h6">Loading...</Typography>
+        </Box>
+      </ThemeProvider>
+    )
+  }
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <ThemeProvider theme={professionalTheme}>
+        <CssBaseline />
+        <ParticlesBackground />
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          minHeight: '100vh',
+          position: 'relative',
+          zIndex: 1
+        }}>
+          <Card sx={{ 
+            p: 4, 
+            maxWidth: 400, 
+            width: '100%', 
+            textAlign: 'center',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <Typography variant="h4" gutterBottom>
+              Document Processing System
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              Please sign in with your Microsoft account to continue
+            </Typography>
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={handleLogin}
+              startIcon={<AccountCircle />}
+              sx={{ py: 1.5 }}
+            >
+              Sign in with Microsoft
+            </Button>
+          </Card>
+        </Box>
+      </ThemeProvider>
+    )
+  }
+
   return (
     <ThemeProvider theme={professionalTheme}>
       <CssBaseline />
-      {/* Particles Background - positioned behind everything */}
       <ParticlesBackground />
       
-      {/* Main App Container */}
       <Box sx={{ 
         position: 'relative', 
         zIndex: 1,
         minHeight: '100vh',
-        backgroundColor: 'transparent' // Ensure transparency to show particles
+        backgroundColor: 'transparent'
       }}>
-        {/* Professional Header */}
+        {/* Header with user menu */}
         <AppBar position="fixed" elevation={0} sx={{ 
-          backgroundColor: 'rgba(255, 255, 255, 0.95)', // Semi-transparent to show particles
-          backdropFilter: 'blur(10px)', // Glassmorphism effect
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(10px)',
           borderBottom: '1px solid rgba(232, 231, 231, 0.47)'
         }}>
           <Toolbar variant="dense" sx={{ minHeight: 48 }}>
@@ -270,17 +390,41 @@ function App() {
             }}>
               Document Processing System
             </Typography>
+            
+            {/* User Menu */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                {userInfo?.userDetails}
+              </Typography>
+              <IconButton onClick={handleMenuOpen} sx={{ p: 0 }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                  <AccountCircle />
+                </Avatar>
+              </IconButton>
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleMenuClose}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <MenuItemComponent onClick={handleLogout}>
+                  <ExitToApp sx={{ mr: 1 }} />
+                  Sign Out
+                </MenuItemComponent>
+              </Menu>
+            </Box>
           </Toolbar>
         </AppBar>
 
-        {/* Main Content */}
+        {/* Main Content - Your existing content */}
         <Box sx={{ 
-          pt: 7, // Back to original header padding
+          pt: 7,
           px: 3,
           pb: 3,
           minHeight: '100vh',
           position: 'relative',
-          backgroundColor: 'transparent' // Ensure transparency
+          backgroundColor: 'transparent'
         }}>
           <Grid container spacing={3}>
             {/* Configuration Panel */}
@@ -289,8 +433,8 @@ function App() {
                 height: '100%', 
                 position: 'relative', 
                 overflow: 'visible',
-                backgroundColor: 'rgba(255, 255, 255, 0.95)', // Semi-transparent card
-                backdropFilter: 'blur(10px)', // Glassmorphism effect
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(224, 224, 224, 0.3)'
               }}>
                 <CardContent sx={{ p: 3 }}>
@@ -368,7 +512,7 @@ function App() {
                       <Input
                         disableUnderline
                         fullWidth
-                        placeholder="Client ID (required)"
+                        placeholder="Client ID (auto-filled from login)"
                         value={userKey}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserKey(e.target.value)}
                         startAdornment={
@@ -447,10 +591,9 @@ function App() {
                       Initialize Upload Session
                     </Button>
 
-                    {/* Initialization Status Message - Single instance */}
                     {initializationStatus !== 'idle' && (
                       <Box 
-                        key={`status-${initializationStatus}-${Date.now()}`} // Force re-render with unique key
+                        key={`status-${initializationStatus}-${Date.now()}`}
                         sx={{ 
                           p: 2, 
                           borderRadius: 1, 
@@ -489,8 +632,8 @@ function App() {
                 height: '100%', 
                 position: 'relative', 
                 overflow: 'visible',
-                backgroundColor: 'rgba(255, 255, 255, 0.95)', // Semi-transparent card
-                backdropFilter: 'blur(10px)', // Glassmorphism effect
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(224, 224, 224, 0.3)'
               }}>
                 <CardContent sx={{ p: 3 }}>
@@ -516,8 +659,8 @@ function App() {
             {/* Activity Log */}
             <Grid item xs={12}>
               <Card sx={{
-                backgroundColor: 'rgba(255, 255, 255, 0.93)', // Semi-transparent card
-                backdropFilter: 'blur(10px)', // Glassmorphism effect
+                backgroundColor: 'rgba(255, 255, 255, 0.93)',
+                backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(224, 224, 224, 0.3)'
               }}>
                 <CardContent sx={{ p: 3 }}>
