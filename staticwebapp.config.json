@@ -13,11 +13,11 @@
   "routes": [
     {
       "route": "/login",
-      "redirect": "/.auth/login/aad"
+      "rewrite": "/.auth/login/aad"
     },
     {
       "route": "/logout",
-      "redirect": "/.auth/logout"
+      "rewrite": "/.auth/logout"
     },
     {
       "route": "/.auth/login/github",
