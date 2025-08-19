@@ -11,9 +11,9 @@
     }
   },
   "routes": [
-    { "route": "/api/*", "allowedRoles": ["toshi", "bart"] },
+    { "route": "/api/*", "allowedRoles": ["authenticated"] },
     { "route": "/access-denied", "allowedRoles": ["anonymous"] },
-    { "route": "/*", "allowedRoles": ["toshi", "bart"] }
+    { "route": "/*", "allowedRoles": ["authenticated"] }
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
