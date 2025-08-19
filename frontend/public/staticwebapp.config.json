@@ -11,16 +11,16 @@
     }
   },
   "routes": [
-    { "route": "/login", "redirect": "/.auth/login/aad" },
-    { "route": "/logout", "redirect": "/.auth/logout" },
     { "route": "/api/*", "allowedRoles": ["toshi", "bart"] },
+    { "route": "/access-denied", "allowedRoles": ["anonymous"] },
     { "route": "/*", "allowedRoles": ["toshi", "bart"] }
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/.auth/*", "/login", "/logout"]
+    "exclude": ["/api/*", "/.auth/*", "/access-denied"]
   },
   "responseOverrides": {
-    "401": { "redirect": "/login", "statusCode": 302 }
+    "401": { "redirect": "/.auth/login/aad", "statusCode": 302 },
+    "403": { "redirect": "/access-denied", "statusCode": 302 }
   }
 }
