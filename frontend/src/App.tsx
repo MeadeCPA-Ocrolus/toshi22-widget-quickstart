@@ -387,7 +387,7 @@ function App() {
               color: 'text.primary',
               flexGrow: 1 
             }}>
-              Document Processing System
+              Meade CPA Document Upload and Processor
             </Typography>
             
             {/* User Menu */}

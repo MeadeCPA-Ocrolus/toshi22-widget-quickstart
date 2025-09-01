@@ -11,6 +11,7 @@
     }
   },
   "routes": [
+    { "route": "/api/handler", "allowedRoles": ["anonymous"] },
     { "route": "/api/*", "allowedRoles": ["authenticated"] },
     { "route": "/access-denied", "allowedRoles": ["anonymous"] },
     { "route": "/*", "allowedRoles": ["authenticated"] }
