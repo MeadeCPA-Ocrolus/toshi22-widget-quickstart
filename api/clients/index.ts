@@ -167,7 +167,6 @@ async function getClient(
             income_type,
             sync_status,
             last_synced,
-            quickbooks_id,
             created_at,
             updated_at
         FROM clients
