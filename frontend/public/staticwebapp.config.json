@@ -12,6 +12,10 @@
   },
   "routes": [
     { "route": "/api/handler", "allowedRoles": ["anonymous"] },
+    { "route": "/api/plaid/webhook", "allowedRoles": ["anonymous"] },
+    { "route": "/api/clients", "allowedRoles": ["anonymous"] },
+    { "route": "/api/clients/*", "allowedRoles": ["anonymous"] },
+    { "route": "/api/plaid/link-token", "allowedRoles": ["anonymous"] },
     { "route": "/api/*", "allowedRoles": ["authenticated"] },
     { "route": "/access-denied", "allowedRoles": ["anonymous"] },
     { "route": "/*", "allowedRoles": ["authenticated"] }
