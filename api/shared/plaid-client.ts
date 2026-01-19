@@ -132,6 +132,7 @@ export interface CreateLinkTokenOptions {
  *   accessToken: decryptedAccessToken,
  * });
  */
+
 export async function createLinkToken(
     options: CreateLinkTokenOptions
 ): Promise<LinkTokenCreateResponse> {
