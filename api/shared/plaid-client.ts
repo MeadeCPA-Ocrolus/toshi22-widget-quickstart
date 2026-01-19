@@ -21,7 +21,7 @@ import {
     TransactionsSyncRequest,
     TransactionsSyncResponse,
     SandboxItemFireWebhookRequestWebhookCodeEnum,
-    HostedLinkDeliveryMethod,
+    //HostedLinkDeliveryMethod,
 } from 'plaid';
 
 /**
@@ -147,8 +147,8 @@ export async function createLinkToken(
         country_codes: [CountryCode.Us],
         user: {
             client_user_id: options.clientUserId,
-            phone_number: options.phoneNumber,
-            email_address: options.email,
+            // Note: phone_number and email_address are only needed for Link Delivery (beta)
+            // which requires special enablement from Plaid
         },
         webhook: getWebhookUrl(),
     };
@@ -163,16 +163,9 @@ export async function createLinkToken(
     }
 
     // Hosted Link configuration
-    // Only include fields that have values to avoid undefined issues
+    // Note: delivery_method (sms/email) requires Link Delivery beta access
+    // Without it, we just get the hosted_link_url and can share it manually
     const hostedLink: any = {};
-    
-    // Set delivery method only if phone or email is provided
-    if (options.phoneNumber) {
-        hostedLink.delivery_method = HostedLinkDeliveryMethod.Sms;
-    } else if (options.email) {
-        hostedLink.delivery_method = HostedLinkDeliveryMethod.Email;
-    }
-    // If neither, don't set delivery_method - user will get the URL directly
     
     if (options.completionRedirectUri) {
         hostedLink.completion_redirect_uri = options.completionRedirectUri;
