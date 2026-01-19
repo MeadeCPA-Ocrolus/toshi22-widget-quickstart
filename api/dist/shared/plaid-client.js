@@ -121,15 +121,22 @@ async function createLinkToken(options) {
         request.products = products;
     }
     // Hosted Link configuration
-    request.hosted_link = {
-        // Delivery method based on what's provided
-        delivery_method: options.phoneNumber
-            ? plaid_1.HostedLinkDeliveryMethod.Sms
-            : (options.email ? plaid_1.HostedLinkDeliveryMethod.Email : undefined),
-        completion_redirect_uri: options.completionRedirectUri,
-        url_lifetime_seconds: options.urlLifetimeSeconds || 14400, // 4 hours default
-        is_mobile_app: false,
-    };
+    // Only include fields that have values to avoid undefined issues
+    const hostedLink = {};
+    // Set delivery method only if phone or email is provided
+    if (options.phoneNumber) {
+        hostedLink.delivery_method = plaid_1.HostedLinkDeliveryMethod.Sms;
+    }
+    else if (options.email) {
+        hostedLink.delivery_method = plaid_1.HostedLinkDeliveryMethod.Email;
+    }
+    // If neither, don't set delivery_method - user will get the URL directly
+    if (options.completionRedirectUri) {
+        hostedLink.completion_redirect_uri = options.completionRedirectUri;
+    }
+    hostedLink.url_lifetime_seconds = options.urlLifetimeSeconds || 14400; // 4 hours default
+    hostedLink.is_mobile_app = false;
+    request.hosted_link = hostedLink;
     const response = await client.linkTokenCreate(request);
     return response.data;
 }

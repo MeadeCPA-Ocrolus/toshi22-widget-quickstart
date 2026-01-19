@@ -166,11 +166,28 @@ const httpTrigger: AzureFunction = async function (
     } catch (error) {
         context.log.error('Error creating link token:', error);
         
+        // Extract Plaid error details if available
+        let errorMessage = 'Unknown error';
+        let plaidError = null;
+        
+        if (error instanceof Error) {
+            errorMessage = error.message;
+            
+            // Plaid errors have additional details in response.data
+            const plaidErr = error as any;
+            if (plaidErr.response?.data) {
+                plaidError = plaidErr.response.data;
+                context.log.error('Plaid API error details:', JSON.stringify(plaidError));
+                errorMessage = plaidError.error_message || plaidError.message || errorMessage;
+            }
+        }
+        
         context.res = {
             status: 500,
             body: { 
                 error: 'Failed to create link token',
-                message: error instanceof Error ? error.message : 'Unknown error',
+                message: errorMessage,
+                plaidError: plaidError,
             },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };

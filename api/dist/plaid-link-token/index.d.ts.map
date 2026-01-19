@@ -1,1 +1,1 @@
-{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../plaid-link-token/index.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;GAUG;AAEH,OAAO,EAAE,aAAa,EAAwB,MAAM,kBAAkB,CAAC;AA2BvE,QAAA,MAAM,WAAW,EAAE,aA0IlB,CAAC;AAEF,eAAe,WAAW,CAAC"}
+{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../plaid-link-token/index.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;GAUG;AAEH,OAAO,EAAE,aAAa,EAAwB,MAAM,kBAAkB,CAAC;AA2BvE,QAAA,MAAM,WAAW,EAAE,aA2JlB,CAAC;AAEF,eAAe,WAAW,CAAC"}
