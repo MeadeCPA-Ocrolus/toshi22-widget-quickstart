@@ -115,6 +115,13 @@ async function createLinkToken(options) {
     if (options.accessToken) {
         // Update mode - don't specify products, use existing access token
         request.access_token = options.accessToken;
+        // Enable account selection in update mode if requested
+        // This allows users to add/remove accounts during re-authentication
+        if (options.accountSelectionEnabled) {
+            request.update = {
+                account_selection_enabled: true,
+            };
+        }
     }
     else {
         // New link - specify products

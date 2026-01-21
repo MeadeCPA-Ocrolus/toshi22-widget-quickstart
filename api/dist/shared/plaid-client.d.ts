@@ -37,6 +37,12 @@ export interface CreateLinkTokenOptions {
     urlLifetimeSeconds?: number;
     /** Existing access token for update mode */
     accessToken?: string;
+    /**
+     * Enable account selection in update mode
+     * When true, user can add/remove accounts during re-authentication
+     * Only used when accessToken is also provided (update mode)
+     */
+    accountSelectionEnabled?: boolean;
 }
 /**
  * Create a Plaid Link token for Hosted Link flow

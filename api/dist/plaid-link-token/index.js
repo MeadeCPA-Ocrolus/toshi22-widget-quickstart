@@ -35,7 +35,7 @@ const httpTrigger = async function (context, req) {
         return;
     }
     try {
-        const { clientId, itemId } = req.body || {};
+        const { clientId, itemId, accountSelectionEnabled } = req.body || {};
         // Validate clientId
         if (!clientId) {
             context.res = {
@@ -45,7 +45,7 @@ const httpTrigger = async function (context, req) {
             };
             return;
         }
-        context.log(`Creating link token for client: ${clientId}, itemId: ${itemId || 'new'}`);
+        context.log(`Creating link token for client: ${clientId}, itemId: ${itemId || 'new'}, accountSelection: ${accountSelectionEnabled || false}`);
         // Fetch client from database
         const clientResult = await (0, database_1.executeQuery)(`SELECT client_id, first_name, last_name, email, phone_number
              FROM clients
@@ -86,6 +86,7 @@ const httpTrigger = async function (context, req) {
             phoneNumber: client.phone_number || undefined,
             email: client.email,
             accessToken, // undefined for new link, set for update mode
+            accountSelectionEnabled: accountSelectionEnabled || false, // Allow account changes in update mode
         });
         context.log(`Link token created: ${linkResponse.link_token}`);
         // Save link token to database
@@ -106,6 +107,7 @@ const httpTrigger = async function (context, req) {
                 expiresAt: linkResponse.expiration,
                 clientName: `${client.first_name} ${client.last_name}`,
                 isUpdateMode: !!itemId,
+                accountSelectionEnabled: !!(itemId && accountSelectionEnabled), // Only relevant for update mode
             },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };

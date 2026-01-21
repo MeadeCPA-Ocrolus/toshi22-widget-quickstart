@@ -110,6 +110,12 @@ export interface CreateLinkTokenOptions {
     urlLifetimeSeconds?: number;
     /** Existing access token for update mode */
     accessToken?: string;
+    /** 
+     * Enable account selection in update mode
+     * When true, user can add/remove accounts during re-authentication
+     * Only used when accessToken is also provided (update mode)
+     */
+    accountSelectionEnabled?: boolean;
 }
 
 /**
@@ -157,6 +163,14 @@ export async function createLinkToken(
     if (options.accessToken) {
         // Update mode - don't specify products, use existing access token
         request.access_token = options.accessToken;
+        
+        // Enable account selection in update mode if requested
+        // This allows users to add/remove accounts during re-authentication
+        if (options.accountSelectionEnabled) {
+            (request as any).update = {
+                account_selection_enabled: true,
+            };
+        }
     } else {
         // New link - specify products
         request.products = products;

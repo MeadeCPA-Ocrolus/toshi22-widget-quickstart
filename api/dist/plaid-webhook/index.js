@@ -4,8 +4,9 @@
  *
  * Receives webhooks from Plaid and processes them:
  * - SESSION_FINISHED: Exchange token, save item + accounts
- * - ITEM webhooks: Update item status
+ * - ITEM webhooks: Update item status (including ERROR with ITEM_LOGIN_REQUIRED)
  * - TRANSACTIONS webhooks: Set sync flag
+ * - USER_ACCOUNT_REVOKED: Mark specific account as inactive
  *
  * Endpoint: POST /api/plaid/webhook
  *
@@ -23,6 +24,7 @@ function generateWebhookId(webhook, timestamp) {
         webhook.webhook_type,
         webhook.webhook_code,
         webhook.item_id || 'no-item',
+        webhook.account_id || '', // Include account_id for USER_ACCOUNT_REVOKED
         webhook.link_session_id || '',
         timestamp.toISOString().substring(0, 16),
     ];
@@ -70,7 +72,19 @@ async function logWebhook(context, webhook, webhookId) {
     return { isNew: true, logId: insertResult.recordset[0].log_id };
 }
 /**
- * Update item status based on webhook code
+ * Update item status based on webhook
+ *
+ * IMPORTANT: The ERROR webhook contains the specific error code (like ITEM_LOGIN_REQUIRED)
+ * inside the `error.error_code` field, NOT in `webhook_code`.
+ *
+ * Webhook structure for ERROR:
+ * {
+ *   webhook_type: "ITEM",
+ *   webhook_code: "ERROR",           <-- This is always "ERROR"
+ *   error: {
+ *     error_code: "ITEM_LOGIN_REQUIRED"  <-- The specific error is HERE
+ *   }
+ * }
  */
 async function updateItemStatus(context, webhook) {
     if (!webhook.item_id)
@@ -79,38 +93,70 @@ async function updateItemStatus(context, webhook) {
     let errorCode = null;
     let errorMessage = null;
     switch (webhook.webhook_code) {
-        case 'ITEM_LOGIN_REQUIRED':
-        case 'PENDING_EXPIRATION':
-        case 'PENDING_DISCONNECT':
-            newStatus = 'login_required';
-            break;
-        case 'ITEM_ERROR':
-            newStatus = 'error';
+        // ============================================================
+        // ERROR webhook - Must check error.error_code for specifics!
+        // This is how ITEM_LOGIN_REQUIRED actually arrives.
+        // ============================================================
+        case 'ERROR':
             if (webhook.error) {
                 errorCode = webhook.error.error_code;
                 errorMessage = webhook.error.error_message;
+                // Check the ACTUAL error code inside the error object
+                switch (webhook.error.error_code) {
+                    case 'ITEM_LOGIN_REQUIRED':
+                        newStatus = 'login_required';
+                        context.log(`Item ${webhook.item_id} requires re-authentication (ITEM_LOGIN_REQUIRED)`);
+                        break;
+                    default:
+                        newStatus = 'error';
+                        context.log(`Item ${webhook.item_id} has error: ${webhook.error.error_code}`);
+                }
+            }
+            else {
+                newStatus = 'error';
             }
             break;
+        // ============================================================
+        // These webhooks come as standalone codes (not under ERROR)
+        // ============================================================
+        case 'PENDING_DISCONNECT':
+            // US/CA: Item will be disconnected in 7 days
+            newStatus = 'login_required';
+            context.log(`Item ${webhook.item_id} pending disconnect. Reason: ${webhook.reason}`);
+            break;
         case 'LOGIN_REPAIRED':
+            // User fixed the item (possibly in another app)
             newStatus = 'active';
             errorCode = null;
             errorMessage = null;
+            context.log(`Item ${webhook.item_id} login repaired`);
             break;
         case 'USER_PERMISSION_REVOKED':
+            // User revoked ALL permissions for this Item
             newStatus = 'archived';
+            context.log(`Item ${webhook.item_id} permissions revoked by user`);
+            break;
+        case 'NEW_ACCOUNTS_AVAILABLE':
+            // New accounts detected - CPA should send update mode link
+            newStatus = 'needs_update';
+            context.log(`Item ${webhook.item_id} has new accounts available`);
             break;
         case 'SYNC_UPDATES_AVAILABLE':
+            // New transactions ready - just set a flag, don't change status
             await (0, database_1.executeQuery)(`UPDATE items 
                  SET has_sync_updates = 1, updated_at = GETDATE()
                  WHERE plaid_item_id = @plaidItemId`, { plaidItemId: webhook.item_id });
-            context.log(`Set has_sync_updates flag for item: ${webhook.item_id}`);
-            return;
-        case 'NEW_ACCOUNTS_AVAILABLE':
-            newStatus = 'needs_update';
-            break;
+            context.log(`Item ${webhook.item_id} has sync updates available`);
+            return; // Early return - we're done
+        case 'WEBHOOK_UPDATE_ACKNOWLEDGED':
+            // Just informational - webhook URL was updated
+            context.log(`Webhook URL updated for item ${webhook.item_id}`);
+            return; // No status change needed
         default:
+            context.log(`Unhandled ITEM webhook_code: ${webhook.webhook_code}`);
             return;
     }
+    // Update the item status in database
     if (newStatus) {
         await (0, database_1.executeQuery)(`UPDATE items 
              SET status = @status,
@@ -130,13 +176,44 @@ async function updateItemStatus(context, webhook) {
     }
 }
 /**
+ * Handle USER_ACCOUNT_REVOKED webhook
+ *
+ * This is fired when a user revokes access to a SPECIFIC ACCOUNT (not the whole Item).
+ * Currently only sent for PNC, but may be sent for other institutions in the future.
+ *
+ * We mark the specific account as inactive, but the Item stays active.
+ */
+async function handleAccountRevoked(context, webhook) {
+    if (!webhook.item_id) {
+        context.log.warn('USER_ACCOUNT_REVOKED missing item_id');
+        return;
+    }
+    if (!webhook.account_id) {
+        context.log.warn('USER_ACCOUNT_REVOKED missing account_id');
+        return;
+    }
+    context.log(`Account revoked: ${webhook.account_id} on item ${webhook.item_id}`);
+    // Mark the specific account as inactive
+    //const result = 
+    await (0, database_1.executeQuery)(`UPDATE accounts 
+         SET is_active = 0, 
+             updated_at = GETDATE()
+         WHERE plaid_account_id = @plaidAccountId`, { plaidAccountId: webhook.account_id });
+    context.log(`Marked account ${webhook.account_id} as inactive`);
+}
+/**
  * Handle SESSION_FINISHED webhook - the main flow!
  *
+ * This fires when a client completes the Plaid Link flow (initial or update mode).
+ *
+ * Steps:
  * 1. Look up client_id from link_token
  * 2. Exchange public_token → access_token
- * 3. Get item details
+ * 3. Get item details (institution info)
  * 4. Encrypt and save item
  * 5. Fetch and save accounts
+ * 6. Mark accounts NOT returned by Plaid as inactive (user may have removed them)
+ * 7. Mark link_token as used
  */
 async function handleSessionFinished(context, webhook) {
     context.log('SESSION_FINISHED webhook received');
@@ -177,33 +254,37 @@ async function handleSessionFinished(context, webhook) {
     context.log('Fetching item details...');
     const itemDetails = await (0, plaid_client_1.getItem)(accessToken);
     const institutionId = itemDetails.item.institution_id || null;
+    // Note: institution_name is on the item object but TypeScript types are incomplete
     const institutionName = itemDetails.item.institution_name || null;
     context.log(`Institution: ${institutionName} (${institutionId})`);
     // Step 4: Encrypt access_token and save item
     context.log('Encrypting access_token...');
     const { encryptedBuffer, keyId } = await (0, encryption_1.encrypt)(accessToken);
-    // Check if item already exists (shouldn't happen, but be safe)
+    // Check if item already exists (update mode scenario)
     const existingItem = await (0, database_1.executeQuery)(`SELECT item_id FROM items WHERE plaid_item_id = @plaidItemId`, { plaidItemId });
     let itemId;
     if (existingItem.recordset.length > 0) {
-        // Item exists - update it (update mode scenario)
+        // Item exists - this is UPDATE MODE
+        // User went through Link to re-authenticate or update accounts
         itemId = existingItem.recordset[0].item_id;
-        context.log(`Updating existing item: ${itemId}`);
+        context.log(`Update mode: Updating existing item ${itemId}`);
         await (0, database_1.executeQuery)(`UPDATE items 
              SET access_token = @accessToken,
                  access_token_key_id = @keyId,
                  status = 'active',
                  last_error_code = NULL,
                  last_error_message = NULL,
+                 last_error_timestamp = NULL,
                  updated_at = GETDATE()
              WHERE item_id = @itemId`, {
             accessToken: encryptedBuffer,
             keyId,
             itemId,
         });
+        context.log(`Updated item ${itemId} - cleared errors, set status to active`);
     }
     else {
-        // New item - insert it
+        // New item - INSERT
         context.log('Inserting new item...');
         const insertResult = await (0, database_1.executeQuery)(`INSERT INTO items (
                 client_id, plaid_item_id, access_token, access_token_key_id,
@@ -225,9 +306,12 @@ async function handleSessionFinished(context, webhook) {
         context.log(`Created new item: ${itemId}`);
     }
     // Step 5: Fetch and save accounts
-    context.log('Fetching accounts...');
+    context.log('Fetching accounts from Plaid...');
     const accountsResult = await (0, plaid_client_1.getAccounts)(accessToken);
+    // Track which Plaid account IDs we received (for Step 6)
+    const receivedPlaidAccountIds = [];
     for (const account of accountsResult.accounts) {
+        receivedPlaidAccountIds.push(account.account_id);
         // Check if account exists
         const existingAccount = await (0, database_1.executeQuery)(`SELECT account_id FROM accounts WHERE plaid_account_id = @plaidAccountId`, { plaidAccountId: account.account_id });
         if (existingAccount.recordset.length > 0) {
@@ -278,11 +362,25 @@ async function handleSessionFinished(context, webhook) {
             context.log(`Created account: ${account.name}`);
         }
     }
-    // Step 6: Mark link_token as used
+    // Step 6: Mark accounts NOT returned by Plaid as inactive
+    // This handles the case where user removed accounts in update mode
+    if (receivedPlaidAccountIds.length > 0) {
+        // Build parameterized query for the IN clause
+        // Note: We use string interpolation here but the IDs come from Plaid, not user input
+        const placeholders = receivedPlaidAccountIds.map(id => `'${id}'`).join(',');
+        //
+        await (0, database_1.executeQuery)(`UPDATE accounts 
+             SET is_active = 0, updated_at = GETDATE()
+             WHERE item_id = @itemId 
+               AND plaid_account_id NOT IN (${placeholders})
+               AND is_active = 1`, { itemId });
+        context.log(`Deactivated accounts not in Plaid response for item ${itemId}`);
+    }
+    // Step 7: Mark link_token as used
     await (0, database_1.executeQuery)(`UPDATE link_tokens 
          SET status = 'used', used_at = GETDATE()
          WHERE link_token = @linkToken`, { linkToken: webhook.link_token });
-    context.log(`SESSION_FINISHED processing complete for client ${clientId}`);
+    context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${itemId}`);
 }
 /**
  * Mark webhook as processed
@@ -327,6 +425,10 @@ const httpTrigger = async function (context, req) {
             return;
         }
         context.log(`Webhook: ${webhook.webhook_type} / ${webhook.webhook_code}`);
+        // Log additional details for debugging
+        if (webhook.error) {
+            context.log(`Error details: ${webhook.error.error_code} - ${webhook.error.error_message}`);
+        }
         const webhookId = generateWebhookId(webhook, new Date());
         const { isNew, logId } = await logWebhook(context, webhook, webhookId);
         if (!isNew) {
@@ -343,19 +445,32 @@ const httpTrigger = async function (context, req) {
         }
         let processingError;
         try {
-            // Handle ITEM webhooks
+            // ============================================================
+            // Route webhooks to appropriate handlers
+            // ============================================================
             if (webhook.webhook_type === 'ITEM') {
-                await updateItemStatus(context, webhook);
-            }
-            // Handle TRANSACTIONS webhooks
-            if (webhook.webhook_type === 'TRANSACTIONS') {
-                if (webhook.webhook_code === 'SYNC_UPDATES_AVAILABLE') {
+                if (webhook.webhook_code === 'USER_ACCOUNT_REVOKED') {
+                    // Special handler for single account revocation
+                    await handleAccountRevoked(context, webhook);
+                }
+                else {
+                    // All other ITEM webhooks (ERROR, LOGIN_REPAIRED, etc.)
                     await updateItemStatus(context, webhook);
                 }
             }
-            // Handle SESSION_FINISHED - the main flow!
-            if (webhook.webhook_type === 'LINK' && webhook.webhook_code === 'SESSION_FINISHED') {
-                await handleSessionFinished(context, webhook);
+            if (webhook.webhook_type === 'TRANSACTIONS') {
+                if (webhook.webhook_code === 'SYNC_UPDATES_AVAILABLE') {
+                    // Reuse the updateItemStatus handler for this
+                    await updateItemStatus(context, webhook);
+                }
+                // Note: Other TRANSACTIONS webhooks (INITIAL_UPDATE, HISTORICAL_UPDATE, etc.)
+                // are deprecated in favor of SYNC_UPDATES_AVAILABLE
+            }
+            if (webhook.webhook_type === 'LINK') {
+                if (webhook.webhook_code === 'SESSION_FINISHED') {
+                    await handleSessionFinished(context, webhook);
+                }
+                // Note: Other LINK webhooks exist but SESSION_FINISHED is the main one
             }
         }
         catch (err) {
@@ -377,7 +492,7 @@ const httpTrigger = async function (context, req) {
         };
     }
     catch (err) {
-        context.log.error('Webhook handler error:', err);
+        context.log.error('Webhook handler error (early failure):', err);
         context.res = {
             status: 500,
             body: {

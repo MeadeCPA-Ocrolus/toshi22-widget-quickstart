@@ -152,12 +152,14 @@ describe('Plaid Webhook Handler', () => {
         });
     });
     describe('ITEM webhooks', () => {
-        it('should update item status to login_required for ITEM_LOGIN_REQUIRED', async () => {
+        it('should update item status to login_required for PENDING_DISCONNECT', async () => {
+            // PENDING_DISCONNECT is a standalone webhook (not under ERROR)
             const context = createMockContext();
             const req = createMockRequest({
                 webhook_type: 'ITEM',
-                webhook_code: 'ITEM_LOGIN_REQUIRED',
+                webhook_code: 'PENDING_DISCONNECT',
                 item_id: 'test-item-123',
+                reason: 'INSTITUTION_TOKEN_EXPIRATION',
             });
             await (0, index_1.default)(context, req);
             // Verify UPDATE was called with correct status
@@ -176,22 +178,41 @@ describe('Plaid Webhook Handler', () => {
             const updateCall = mockExecuteQuery.mock.calls.find(call => call[0].includes('UPDATE items') && call[0].includes('SET status'));
             expect(updateCall?.[1]?.status).toBe('active');
         });
-        it('should update item status to error for ITEM_ERROR', async () => {
+        it('should update item status to login_required for ERROR with ITEM_LOGIN_REQUIRED', async () => {
+            // IMPORTANT: ITEM_LOGIN_REQUIRED comes as webhook_code: 'ERROR' 
+            // with error.error_code: 'ITEM_LOGIN_REQUIRED'
             const context = createMockContext();
             const req = createMockRequest({
                 webhook_type: 'ITEM',
-                webhook_code: 'ITEM_ERROR',
+                webhook_code: 'ERROR', // The webhook_code is ERROR
                 item_id: 'test-item-123',
                 error: {
                     error_type: 'ITEM_ERROR',
-                    error_code: 'ITEM_LOGIN_REQUIRED',
+                    error_code: 'ITEM_LOGIN_REQUIRED', // The specific error is here
                     error_message: 'User needs to re-authenticate',
                 },
             });
             await (0, index_1.default)(context, req);
             const updateCall = mockExecuteQuery.mock.calls.find(call => call[0].includes('UPDATE items') && call[0].includes('SET status'));
-            expect(updateCall?.[1]?.status).toBe('error');
+            expect(updateCall?.[1]?.status).toBe('login_required'); // Should be login_required, not error
             expect(updateCall?.[1]?.errorCode).toBe('ITEM_LOGIN_REQUIRED');
+        });
+        it('should update item status to error for ERROR with other error codes', async () => {
+            const context = createMockContext();
+            const req = createMockRequest({
+                webhook_type: 'ITEM',
+                webhook_code: 'ERROR',
+                item_id: 'test-item-123',
+                error: {
+                    error_type: 'ITEM_ERROR',
+                    error_code: 'ITEM_NOT_SUPPORTED',
+                    error_message: 'Item not supported',
+                },
+            });
+            await (0, index_1.default)(context, req);
+            const updateCall = mockExecuteQuery.mock.calls.find(call => call[0].includes('UPDATE items') && call[0].includes('SET status'));
+            expect(updateCall?.[1]?.status).toBe('error');
+            expect(updateCall?.[1]?.errorCode).toBe('ITEM_NOT_SUPPORTED');
         });
         it('should update item status to archived for USER_PERMISSION_REVOKED', async () => {
             const context = createMockContext();
@@ -203,6 +224,20 @@ describe('Plaid Webhook Handler', () => {
             await (0, index_1.default)(context, req);
             const updateCall = mockExecuteQuery.mock.calls.find(call => call[0].includes('UPDATE items') && call[0].includes('SET status'));
             expect(updateCall?.[1]?.status).toBe('archived');
+        });
+        it('should mark specific account as inactive for USER_ACCOUNT_REVOKED', async () => {
+            const context = createMockContext();
+            const req = createMockRequest({
+                webhook_type: 'ITEM',
+                webhook_code: 'USER_ACCOUNT_REVOKED',
+                item_id: 'test-item-123',
+                account_id: 'test-account-456', // Specific account that was revoked
+            });
+            await (0, index_1.default)(context, req);
+            // Verify UPDATE was called on accounts table (not items table)
+            const updateCall = mockExecuteQuery.mock.calls.find(call => call[0].includes('UPDATE accounts') && call[0].includes('is_active = 0'));
+            expect(updateCall).toBeDefined();
+            expect(updateCall?.[1]?.plaidAccountId).toBe('test-account-456');
         });
     });
     describe('TRANSACTIONS webhooks', () => {
@@ -417,7 +452,7 @@ describe('Plaid Webhook Handler', () => {
             const context = createMockContext();
             const req = createMockRequest({
                 webhook_type: 'ITEM',
-                webhook_code: 'ITEM_LOGIN_REQUIRED',
+                webhook_code: 'PENDING_DISCONNECT',
                 item_id: 'test-item-123',
             });
             await (0, index_1.default)(context, req);
