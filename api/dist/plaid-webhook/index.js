@@ -279,8 +279,9 @@ async function handleSessionFinished(context, webhook) {
     //
     // Detection methods (in order of priority):
     // A. Same plaid_item_id = UPDATE MODE (user re-authenticated existing Item)
-    // B. Same client + institution_id = DUPLICATE (user linked same bank again)
-    // C. Neither = NEW ITEM
+    // B. Same client + institution_id (active) = DUPLICATE (user linked same bank again)
+    // C. Same client + institution_id (archived) = RESTORE (user re-linking previously removed bank)
+    // D. Neither = NEW ITEM
     //
     // Note: Plaid docs also suggest comparing account mask/name, but institution_id
     // is sufficient for our use case since we want to prevent ANY duplicate at same bank.
@@ -290,15 +291,22 @@ async function handleSessionFinished(context, webhook) {
     // Per Plaid docs, at these institutions, creating a duplicate Item may invalidate
     // the old Item. We handle this by updating the existing item with the new credentials.
     const existingItemByPlaidId = await (0, database_1.executeQuery)(`SELECT item_id FROM items WHERE plaid_item_id = @plaidItemId`, { plaidItemId });
-    // Also check for same client + institution (different plaid_item_id but same bank)
-    // This catches the case where user goes through Link again for the same bank
-    const existingItemByInstitution = await (0, database_1.executeQuery)(`SELECT item_id, plaid_item_id FROM items 
+    // Check for same client + institution (active items - duplicate prevention)
+    const existingActiveItemByInstitution = await (0, database_1.executeQuery)(`SELECT item_id, plaid_item_id FROM items 
          WHERE client_id = @clientId 
            AND institution_id = @institutionId 
            AND status != 'archived'
            AND plaid_item_id != @plaidItemId`, { clientId, institutionId, plaidItemId });
+    // Check for same client + institution (archived items - restore scenario)
+    const existingArchivedItemByInstitution = await (0, database_1.executeQuery)(`SELECT TOP 1 item_id, plaid_item_id FROM items 
+         WHERE client_id = @clientId 
+           AND institution_id = @institutionId 
+           AND status = 'archived'
+           AND plaid_item_id != @plaidItemId
+         ORDER BY updated_at DESC`, { clientId, institutionId, plaidItemId });
     let itemId;
     let isDuplicate = false;
+    let isRestored = false;
     if (existingItemByPlaidId.recordset.length > 0) {
         // Case A: Same plaid_item_id - this is UPDATE MODE
         // User went through Link to re-authenticate or update accounts
@@ -319,7 +327,7 @@ async function handleSessionFinished(context, webhook) {
         });
         context.log(`Updated item ${itemId} - cleared errors, set status to active`);
     }
-    else if (existingItemByInstitution.recordset.length > 0) {
+    else if (existingActiveItemByInstitution.recordset.length > 0) {
         // Case B: DUPLICATE PREVENTION
         // Same client already has an active item at this institution
         // This can happen if user goes through Link again for the same bank
@@ -329,7 +337,7 @@ async function handleSessionFinished(context, webhook) {
         //
         // For Chase/PNC/NFCU/Schwab: The old Item is automatically invalidated
         // For other institutions: We should call /item/remove on the old Item
-        const existingItem = existingItemByInstitution.recordset[0];
+        const existingItem = existingActiveItemByInstitution.recordset[0];
         itemId = existingItem.item_id;
         isDuplicate = true;
         context.log(`DUPLICATE PREVENTION: Client ${clientId} already has item ${itemId} at ${institutionName}`);
@@ -368,8 +376,36 @@ async function handleSessionFinished(context, webhook) {
         });
         context.log(`Updated existing item ${itemId} with new plaid_item_id (duplicate prevention)`);
     }
+    else if (existingArchivedItemByInstitution.recordset.length > 0) {
+        // Case C: RESTORE ARCHIVED ITEM
+        // Same client previously had an item at this institution that was archived
+        // (e.g., user revoked permissions, then re-linked)
+        // Restore the archived item instead of creating a new one
+        const archivedItem = existingArchivedItemByInstitution.recordset[0];
+        itemId = archivedItem.item_id;
+        isRestored = true;
+        context.log(`RESTORING ARCHIVED ITEM: Client ${clientId} re-linking ${institutionName}`);
+        context.log(`Archived item_id: ${itemId}, Old plaid_item_id: ${archivedItem.plaid_item_id}, New: ${plaidItemId}`);
+        // Update the archived item with new credentials and restore to active
+        await (0, database_1.executeQuery)(`UPDATE items 
+             SET plaid_item_id = @plaidItemId,
+                 access_token = @accessToken,
+                 access_token_key_id = @keyId,
+                 status = 'active',
+                 last_error_code = NULL,
+                 last_error_message = NULL,
+                 last_error_timestamp = NULL,
+                 updated_at = GETDATE()
+             WHERE item_id = @itemId`, {
+            plaidItemId,
+            accessToken: encryptedBuffer,
+            keyId,
+            itemId,
+        });
+        context.log(`Restored archived item ${itemId} to active status`);
+    }
     else {
-        // Case C: New item - INSERT
+        // Case D: New item - INSERT
         context.log('Inserting new item...');
         const insertResult = await (0, database_1.executeQuery)(`INSERT INTO items (
                 client_id, plaid_item_id, access_token, access_token_key_id,
@@ -464,7 +500,7 @@ async function handleSessionFinished(context, webhook) {
     await (0, database_1.executeQuery)(`UPDATE link_tokens 
          SET status = 'used', used_at = GETDATE()
          WHERE link_token = @linkToken`, { linkToken: webhook.link_token });
-    context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${itemId}${isDuplicate ? ' (duplicate prevented)' : ''}`);
+    context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${itemId}${isDuplicate ? ' (duplicate prevented)' : ''}${isRestored ? ' (archived item restored)' : ''}`);
 }
 /**
  * Mark webhook as processed
