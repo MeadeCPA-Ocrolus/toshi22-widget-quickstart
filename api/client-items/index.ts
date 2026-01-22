@@ -129,7 +129,6 @@ const httpTrigger: AzureFunction = async function (
                 updated_at
             FROM items
             WHERE client_id = @clientId
-              AND status != 'archived'
             ORDER BY created_at DESC`,
             { clientId: clientIdNum }
         );
