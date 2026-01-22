@@ -220,9 +220,9 @@ describe('Clients Endpoint', () => {
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.filters.hasIssues).toBe('true');
             
-            // Verify HAVING clause is in the query
+            // Verify subquery wrapper with WHERE clause is in the query
             const queryCall = mockExecuteQuery.mock.calls[0];
-            expect(queryCall[0]).toContain('HAVING');
+            expect(queryCall[0]).toContain('WHERE items_needing_attention > 0');
         });
     });
 

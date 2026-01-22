@@ -129,12 +129,9 @@ async function listClients(context, req) {
     const whereClause = conditions.length > 0
         ? `WHERE ${conditions.join(' AND ')}`
         : '';
-    // hasIssues filter needs HAVING clause since it uses aggregate
-    const havingClause = hasIssues === 'true'
-        ? 'HAVING ISNULL(item_counts.items_needing_attention, 0) > 0'
-        : '';
     // Main query with item counts
-    const query = `
+    // Note: hasIssues filter uses WHERE on outer query since we can't HAVING on a LEFT JOIN alias
+    let query = `
         SELECT 
             c.client_id,
             c.first_name,
@@ -165,9 +162,15 @@ async function listClients(context, req) {
             GROUP BY client_id
         ) item_counts ON item_counts.client_id = c.client_id
         ${whereClause}
-        ${havingClause}
         ORDER BY c.last_name, c.first_name
     `;
+    // hasIssues filter - wrap query to filter on computed column
+    if (hasIssues === 'true') {
+        query = `
+            SELECT * FROM (${query}) AS filtered
+            WHERE items_needing_attention > 0
+        `;
+    }
     const result = await (0, database_1.executeQuery)(query, params);
     context.log(`Found ${result.recordset.length} clients`);
     context.res = {
