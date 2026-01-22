@@ -162,7 +162,6 @@ const httpTrigger: AzureFunction = async function (
                 last_updated_datetime
             FROM accounts
             WHERE item_id IN (${itemIds.join(',')})
-              AND is_active = 1
             ORDER BY account_type, account_name`
         );
 
