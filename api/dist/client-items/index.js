@@ -69,7 +69,6 @@ const httpTrigger = async function (context, req) {
                 updated_at
             FROM items
             WHERE client_id = @clientId
-              AND status != 'archived'
             ORDER BY created_at DESC`, { clientId: clientIdNum });
         // If no items, return empty array
         if (itemsResult.recordset.length === 0) {
@@ -97,7 +96,6 @@ const httpTrigger = async function (context, req) {
                 last_updated_datetime
             FROM accounts
             WHERE item_id IN (${itemIds.join(',')})
-              AND is_active = 1
             ORDER BY account_type, account_name`);
         // Group accounts by item_id
         const accountsByItem = new Map();

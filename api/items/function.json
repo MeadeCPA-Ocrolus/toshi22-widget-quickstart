@@ -5,8 +5,8 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["get", "post", "put", "delete", "options"],
-      "route": "clients/{id?}"
+      "methods": ["get", "delete", "options"],
+      "route": "items/{id}"
     },
     {
       "type": "http",
@@ -14,5 +14,5 @@
       "name": "res"
     }
   ],
-  "scriptFile": "../dist/clients/index.js"
+  "scriptFile": "../dist/items/index.js"
 }

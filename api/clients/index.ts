@@ -1,9 +1,16 @@
 /**
  * Clients Endpoint
  * 
- * GET /api/clients - List all clients
+ * GET /api/clients - List all clients (with optional search)
  * GET /api/clients/:id - Get single client
  * POST /api/clients - Create new client
+ * PUT /api/clients/:id - Update client
+ * DELETE /api/clients/:id - Delete client (with cascade)
+ * 
+ * Query Parameters for GET /api/clients:
+ * - search: Search by name, email, or business name (case-insensitive)
+ * - status: Filter by sync_status ('active', 'needs_sync', 'error')
+ * - hasIssues: Filter to clients with items needing attention ('true'/'false')
  * 
  * @module clients
  */
@@ -24,9 +31,16 @@ interface ClientRecord {
     account_type: string;
     fiscal_year_start_date: string;
     state: string;
+    federal_effective_tax_rate: number | null;
+    state_effective_tax_rate: number | null;
+    self_employment_tax_rate: number | null;
+    blended_effective_tax_rate: number | null;
+    target_tax_savings_percent: number | null;
+    income_type: string | null;
     sync_status: string;
     last_synced: string | null;
     created_at: string;
+    updated_at: string | null;
 }
 
 /**
@@ -37,16 +51,22 @@ interface ClientWithCounts extends ClientRecord {
     items_needing_attention: number;
 }
 
+/**
+ * CORS headers for all responses
+ */
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+/**
+ * Main HTTP trigger handler
+ */
 const httpTrigger: AzureFunction = async function (
     context: Context,
     req: HttpRequest
 ): Promise<void> {
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
-
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         context.res = { status: 200, headers: corsHeaders };
@@ -57,33 +77,56 @@ const httpTrigger: AzureFunction = async function (
         // Get client ID from route if present
         const clientId = req.params?.id;
 
-        if (req.method === 'GET') {
-            if (clientId) {
-                // GET /api/clients/:id - Single client
-                await getClient(context, corsHeaders, parseInt(clientId, 10));
-            } else {
-                // GET /api/clients - List all clients
-                await listClients(context, corsHeaders);
-            }
-        } else if (req.method === 'POST') {
-            // POST /api/clients - Create client
-            await createClient(context, corsHeaders, req.body);
-        } else if (req.method === 'PUT' && clientId) {
-            // PUT /api/clients/:id - Update client
-            await updateClient(context, corsHeaders, parseInt(clientId, 10), req.body);
-        } else {
-            context.res = {
-                status: 405,
-                body: { error: 'Method not allowed' },
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            };
+        switch (req.method) {
+            case 'GET':
+                if (clientId) {
+                    await getClient(context, parseInt(clientId, 10));
+                } else {
+                    await listClients(context, req);
+                }
+                break;
+
+            case 'POST':
+                await createClient(context, req.body);
+                break;
+
+            case 'PUT':
+                if (!clientId) {
+                    context.res = {
+                        status: 400,
+                        body: { error: 'Client ID is required for updates' },
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    };
+                    return;
+                }
+                await updateClient(context, parseInt(clientId, 10), req.body);
+                break;
+
+            case 'DELETE':
+                if (!clientId) {
+                    context.res = {
+                        status: 400,
+                        body: { error: 'Client ID is required for deletion' },
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    };
+                    return;
+                }
+                await deleteClient(context, parseInt(clientId, 10));
+                break;
+
+            default:
+                context.res = {
+                    status: 405,
+                    body: { error: 'Method not allowed' },
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                };
         }
 
     } catch (error) {
         context.log.error('Clients endpoint error:', error);
         context.res = {
             status: 500,
-            body: { 
+            body: {
                 error: 'Internal server error',
                 message: error instanceof Error ? error.message : 'Unknown error',
             },
@@ -94,11 +137,55 @@ const httpTrigger: AzureFunction = async function (
 
 /**
  * List all clients with item counts
+ * Supports search by name/email and filtering
+ * 
+ * @param context - Azure Function context
+ * @param req - HTTP request with query parameters
  */
-async function listClients(context: Context, corsHeaders: Record<string, string>): Promise<void> {
-    context.log('Listing all clients');
+async function listClients(context: Context, req: HttpRequest): Promise<void> {
+    context.log('Listing clients');
 
-    const result = await executeQuery<ClientWithCounts>(`
+    // Extract query parameters
+    const search = req.query?.search?.trim() || '';
+    const status = req.query?.status || '';
+    const hasIssues = req.query?.hasIssues || '';
+
+    // Build dynamic WHERE clause
+    const conditions: string[] = [];
+    const params: Record<string, any> = {};
+
+    // Search filter - searches across name, email, and business name
+    if (search) {
+        conditions.push(`(
+            c.first_name LIKE @search 
+            OR c.last_name LIKE @search 
+            OR c.email LIKE @search 
+            OR c.business_name LIKE @search
+            OR CONCAT(c.first_name, ' ', c.last_name) LIKE @search
+        )`);
+        params.search = `%${search}%`;
+        context.log(`Searching for: ${search}`);
+    }
+
+    // Status filter
+    if (status) {
+        conditions.push('c.sync_status = @status');
+        params.status = status;
+        context.log(`Filtering by status: ${status}`);
+    }
+
+    // Build the WHERE clause
+    const whereClause = conditions.length > 0 
+        ? `WHERE ${conditions.join(' AND ')}` 
+        : '';
+
+    // hasIssues filter needs HAVING clause since it uses aggregate
+    const havingClause = hasIssues === 'true' 
+        ? 'HAVING ISNULL(item_counts.items_needing_attention, 0) > 0' 
+        : '';
+
+    // Main query with item counts
+    const query = `
         SELECT 
             c.client_id,
             c.first_name,
@@ -128,24 +215,37 @@ async function listClients(context: Context, corsHeaders: Record<string, string>
             WHERE status != 'archived'
             GROUP BY client_id
         ) item_counts ON item_counts.client_id = c.client_id
+        ${whereClause}
+        ${havingClause}
         ORDER BY c.last_name, c.first_name
-    `);
+    `;
+
+    const result = await executeQuery<ClientWithCounts>(query, params);
+
+    context.log(`Found ${result.recordset.length} clients`);
 
     context.res = {
         status: 200,
-        body: { clients: result.recordset },
+        body: { 
+            clients: result.recordset,
+            count: result.recordset.length,
+            filters: {
+                search: search || null,
+                status: status || null,
+                hasIssues: hasIssues || null,
+            },
+        },
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     };
 }
 
 /**
- * Get single client by ID
+ * Get single client by ID with full details
+ * 
+ * @param context - Azure Function context
+ * @param clientId - Client ID to fetch
  */
-async function getClient(
-    context: Context, 
-    corsHeaders: Record<string, string>,
-    clientId: number
-): Promise<void> {
+async function getClient(context: Context, clientId: number): Promise<void> {
     context.log(`Getting client: ${clientId}`);
 
     const result = await executeQuery<ClientRecord>(
@@ -192,12 +292,11 @@ async function getClient(
 
 /**
  * Create new client
+ * 
+ * @param context - Azure Function context
+ * @param body - Request body with client data
  */
-async function createClient(
-    context: Context,
-    corsHeaders: Record<string, string>,
-    body: any
-): Promise<void> {
+async function createClient(context: Context, body: any): Promise<void> {
     context.log('Creating new client');
 
     // Validate required fields
@@ -213,16 +312,30 @@ async function createClient(
         return;
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(body.email)) {
+        context.res = {
+            status: 400,
+            body: { error: 'Invalid email format' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
+
     // Check for duplicate email
     const existingResult = await executeQuery<{ client_id: number }>(
         `SELECT client_id FROM clients WHERE email = @email`,
-        { email: body.email }
+        { email: body.email.toLowerCase().trim() }
     );
 
     if (existingResult.recordset.length > 0) {
         context.res = {
             status: 409,
-            body: { error: 'A client with this email already exists' },
+            body: { 
+                error: 'A client with this email already exists',
+                existing_client_id: existingResult.recordset[0].client_id,
+            },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };
         return;
@@ -240,14 +353,14 @@ async function createClient(
             @accountType, @fiscalYearStartDate, @state
         )`,
         {
-            firstName: body.first_name,
-            lastName: body.last_name,
-            businessName: body.business_name || null,
-            email: body.email,
-            phoneNumber: body.phone_number || null,
+            firstName: body.first_name.trim(),
+            lastName: body.last_name.trim(),
+            businessName: body.business_name?.trim() || null,
+            email: body.email.toLowerCase().trim(),
+            phoneNumber: body.phone_number?.trim() || null,
             accountType: body.account_type,
             fiscalYearStartDate: body.fiscal_year_start_date,
-            state: body.state,
+            state: body.state.toUpperCase(),
         }
     );
 
@@ -256,7 +369,7 @@ async function createClient(
 
     context.res = {
         status: 201,
-        body: { 
+        body: {
             client_id: newClientId,
             message: 'Client created successfully',
         },
@@ -266,10 +379,13 @@ async function createClient(
 
 /**
  * Update existing client
+ * 
+ * @param context - Azure Function context
+ * @param clientId - Client ID to update
+ * @param body - Request body with fields to update
  */
 async function updateClient(
     context: Context,
-    corsHeaders: Record<string, string>,
     clientId: number,
     body: any
 ): Promise<void> {
@@ -290,24 +406,63 @@ async function updateClient(
         return;
     }
 
+    // If updating email, check for duplicates
+    if (body?.email) {
+        const emailCheck = await executeQuery<{ client_id: number }>(
+            `SELECT client_id FROM clients WHERE email = @email AND client_id != @clientId`,
+            { email: body.email.toLowerCase().trim(), clientId }
+        );
+        
+        if (emailCheck.recordset.length > 0) {
+            context.res = {
+                status: 409,
+                body: { error: 'Another client with this email already exists' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            };
+            return;
+        }
+    }
+
     // Build dynamic update query
     const updateFields: string[] = [];
     const params: Record<string, any> = { clientId };
 
-    const allowedFields = [
-        'first_name', 'last_name', 'business_name', 'email', 'phone_number',
-        'account_type', 'fiscal_year_start_date', 'state',
-        'federal_effective_tax_rate', 'state_effective_tax_rate',
-        'self_employment_tax_rate', 'blended_effective_tax_rate',
-        'target_tax_savings_percent', 'income_type', 'sync_status'
-    ];
+    // Map of allowed fields to their database column names
+    const allowedFields: Record<string, string> = {
+        'first_name': 'first_name',
+        'last_name': 'last_name',
+        'business_name': 'business_name',
+        'email': 'email',
+        'phone_number': 'phone_number',
+        'account_type': 'account_type',
+        'fiscal_year_start_date': 'fiscal_year_start_date',
+        'state': 'state',
+        'federal_effective_tax_rate': 'federal_effective_tax_rate',
+        'state_effective_tax_rate': 'state_effective_tax_rate',
+        'self_employment_tax_rate': 'self_employment_tax_rate',
+        'blended_effective_tax_rate': 'blended_effective_tax_rate',
+        'target_tax_savings_percent': 'target_tax_savings_percent',
+        'income_type': 'income_type',
+        'sync_status': 'sync_status',
+    };
 
-    for (const field of allowedFields) {
-        if (body?.[field] !== undefined) {
-            // Convert snake_case to camelCase for param name
-            const paramName = field.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-            updateFields.push(`${field} = @${paramName}`);
-            params[paramName] = body[field];
+    for (const [jsonField, dbColumn] of Object.entries(allowedFields)) {
+        if (body?.[jsonField] !== undefined) {
+            // Create a safe parameter name (remove underscores for SQL param)
+            const paramName = jsonField.replace(/_/g, '');
+            updateFields.push(`${dbColumn} = @${paramName}`);
+            
+            // Apply transformations for specific fields
+            let value = body[jsonField];
+            if (jsonField === 'email' && value) {
+                value = value.toLowerCase().trim();
+            } else if (jsonField === 'state' && value) {
+                value = value.toUpperCase();
+            } else if (typeof value === 'string') {
+                value = value.trim();
+            }
+            
+            params[paramName] = value;
         }
     }
 
@@ -320,7 +475,7 @@ async function updateClient(
         return;
     }
 
-    // Add updated_at
+    // Add updated_at timestamp
     updateFields.push('updated_at = GETDATE()');
 
     await executeQuery(
@@ -328,9 +483,149 @@ async function updateClient(
         params
     );
 
+    context.log(`Updated client: ${clientId}`);
+
     context.res = {
         status: 200,
-        body: { message: 'Client updated successfully' },
+        body: { 
+            message: 'Client updated successfully',
+            client_id: clientId,
+        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    };
+}
+
+/**
+ * Delete client and all related data (cascade delete)
+ * 
+ * WARNING: This permanently deletes:
+ * - All transactions for all accounts
+ * - All accounts for all items
+ * - All items (bank connections)
+ * - All link tokens
+ * - The client record
+ * 
+ * @param context - Azure Function context
+ * @param clientId - Client ID to delete
+ */
+async function deleteClient(context: Context, clientId: number): Promise<void> {
+    context.log(`Deleting client: ${clientId}`);
+
+    // Check client exists
+    const existingResult = await executeQuery<{ client_id: number; first_name: string; last_name: string }>(
+        `SELECT client_id, first_name, last_name FROM clients WHERE client_id = @clientId`,
+        { clientId }
+    );
+
+    if (existingResult.recordset.length === 0) {
+        context.res = {
+            status: 404,
+            body: { error: 'Client not found' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
+
+    const client = existingResult.recordset[0];
+    context.log(`Deleting client: ${client.first_name} ${client.last_name} (ID: ${clientId})`);
+
+    // Get all item IDs for this client (for cascade delete)
+    const itemsResult = await executeQuery<{ item_id: number }>(
+        `SELECT item_id FROM items WHERE client_id = @clientId`,
+        { clientId }
+    );
+    const itemIds = itemsResult.recordset.map(i => i.item_id);
+
+    // Track what we're deleting for the response
+    const deleteCounts = {
+        transactions: 0,
+        accounts: 0,
+        items: itemIds.length,
+        link_tokens: 0,
+        webhook_logs: 0,
+    };
+
+    // Delete in order (respecting foreign key constraints)
+    
+    // 1. Delete transactions for all accounts belonging to client's items
+    if (itemIds.length > 0) {
+        const txResult = await executeQuery<{ count: number }>(
+            `SELECT COUNT(*) as count FROM transactions 
+             WHERE account_id IN (
+                SELECT account_id FROM accounts WHERE item_id IN (${itemIds.join(',')})
+             )`
+        );
+        deleteCounts.transactions = txResult.recordset[0]?.count || 0;
+
+        await executeQuery(
+            `DELETE FROM transactions 
+             WHERE account_id IN (
+                SELECT account_id FROM accounts WHERE item_id IN (${itemIds.join(',')})
+             )`
+        );
+        context.log(`Deleted ${deleteCounts.transactions} transactions`);
+
+        // 2. Delete accounts for all items
+        const accResult = await executeQuery<{ count: number }>(
+            `SELECT COUNT(*) as count FROM accounts WHERE item_id IN (${itemIds.join(',')})`
+        );
+        deleteCounts.accounts = accResult.recordset[0]?.count || 0;
+
+        await executeQuery(
+            `DELETE FROM accounts WHERE item_id IN (${itemIds.join(',')})`
+        );
+        context.log(`Deleted ${deleteCounts.accounts} accounts`);
+    }
+
+    // 3. Delete webhook logs for this client's items
+    if (itemIds.length > 0) {
+        const whResult = await executeQuery<{ count: number }>(
+            `SELECT COUNT(*) as count FROM webhook_log WHERE item_id IN (${itemIds.join(',')})`
+        );
+        deleteCounts.webhook_logs = whResult.recordset[0]?.count || 0;
+
+        await executeQuery(
+            `DELETE FROM webhook_log WHERE item_id IN (${itemIds.join(',')})`
+        );
+        context.log(`Deleted ${deleteCounts.webhook_logs} webhook logs`);
+    }
+
+    // 4. Delete items
+    await executeQuery(
+        `DELETE FROM items WHERE client_id = @clientId`,
+        { clientId }
+    );
+    context.log(`Deleted ${deleteCounts.items} items`);
+
+    // 5. Delete link tokens
+    const ltResult = await executeQuery<{ count: number }>(
+        `SELECT COUNT(*) as count FROM link_tokens WHERE client_id = @clientId`,
+        { clientId }
+    );
+    deleteCounts.link_tokens = ltResult.recordset[0]?.count || 0;
+
+    await executeQuery(
+        `DELETE FROM link_tokens WHERE client_id = @clientId`,
+        { clientId }
+    );
+    context.log(`Deleted ${deleteCounts.link_tokens} link tokens`);
+
+    // 6. Finally, delete the client
+    await executeQuery(
+        `DELETE FROM clients WHERE client_id = @clientId`,
+        { clientId }
+    );
+
+    context.log(`Client ${clientId} deleted successfully`);
+
+    context.res = {
+        status: 200,
+        body: {
+            message: 'Client and all related data deleted successfully',
+            client_id: clientId,
+            client_name: `${client.first_name} ${client.last_name}`,
+            deleted: deleteCounts,
+        },
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     };
 }
