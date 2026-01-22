@@ -212,7 +212,6 @@ async function listClients(context: Context, req: HttpRequest): Promise<void> {
             GROUP BY client_id
         ) item_counts ON item_counts.client_id = c.client_id
         ${whereClause}
-        ORDER BY c.last_name, c.first_name
     `;
 
     // hasIssues filter - wrap query to filter on computed column
@@ -220,7 +219,10 @@ async function listClients(context: Context, req: HttpRequest): Promise<void> {
         query = `
             SELECT * FROM (${query}) AS filtered
             WHERE items_needing_attention > 0
+            ORDER BY last_name, first_name
         `;
+    } else {
+        query += ` ORDER BY c.last_name, c.first_name`;
     }
 
     const result = await executeQuery<ClientWithCounts>(query, params);

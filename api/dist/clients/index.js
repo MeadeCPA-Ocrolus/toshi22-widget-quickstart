@@ -162,14 +162,17 @@ async function listClients(context, req) {
             GROUP BY client_id
         ) item_counts ON item_counts.client_id = c.client_id
         ${whereClause}
-        ORDER BY c.last_name, c.first_name
     `;
     // hasIssues filter - wrap query to filter on computed column
     if (hasIssues === 'true') {
         query = `
             SELECT * FROM (${query}) AS filtered
             WHERE items_needing_attention > 0
+            ORDER BY last_name, first_name
         `;
+    }
+    else {
+        query += ` ORDER BY c.last_name, c.first_name`;
     }
     const result = await (0, database_1.executeQuery)(query, params);
     context.log(`Found ${result.recordset.length} clients`);
