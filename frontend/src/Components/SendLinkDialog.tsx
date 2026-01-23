@@ -99,7 +99,7 @@ export const SendLinkDialog: React.FC<SendLinkDialogProps> = ({
 
             setLinkResponse(response);
             setState('success');
-            onLinkCreated?.(response);
+            // Don't call onLinkCreated here - wait until user closes dialog
         } catch (err) {
             const errorMessage =
                 err instanceof Error
@@ -137,6 +137,10 @@ export const SendLinkDialog: React.FC<SendLinkDialogProps> = ({
     };
 
     const handleClose = () => {
+        // If we successfully created a link, notify parent to refresh data
+        if (state === 'success' && linkResponse) {
+            onLinkCreated?.(linkResponse);
+        }
         onClose();
     };
 
