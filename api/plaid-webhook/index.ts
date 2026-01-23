@@ -827,7 +827,7 @@ async function handleSessionFinished(
             params[`id${i}`] = id;
         });
         
-        const deactivateResult = await executeQuery(
+        await executeQuery(
             `UPDATE accounts 
              SET is_active = 0, updated_at = GETDATE()
              WHERE item_id = @itemId 
