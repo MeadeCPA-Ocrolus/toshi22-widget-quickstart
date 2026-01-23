@@ -1,74 +1,124 @@
 /**
  * SendLinkDialog Component
+ * 
+ * Two modes:
+ * 1. New connection - Select client, create hosted link (always has account selection)
+ * 2. Update mode - Pre-selected client + item, for re-authentication
+ * 
  * @module Components/SendLinkDialog
  */
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Alert, CircularProgress, TextField, Autocomplete, FormControlLabel, Switch, Divider, IconButton, Paper } from '@mui/material';
-import { Send, ContentCopy, OpenInNew, Close, AccountBalance, Person, Refresh } from '@mui/icons-material';
+import {
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Button,
+    Typography,
+    Box,
+    Alert,
+    CircularProgress,
+    TextField,
+    Autocomplete,
+    Divider,
+    IconButton,
+    Paper,
+} from '@mui/material';
+import {
+    Send,
+    ContentCopy,
+    OpenInNew,
+    Close,
+    AccountBalance,
+    Person,
+    Refresh,
+    CheckCircle,
+} from '@mui/icons-material';
 import { Client, Item, CreateLinkTokenResponse } from '../types/plaid';
 import { createLinkToken, getClientDisplayName } from '../services/api';
 
 interface SendLinkDialogProps {
     open: boolean;
     onClose: () => void;
+    /** Pre-selected client (for update mode or when opened from client detail) */
     client?: Client | null;
+    /** Pre-selected item (triggers update mode) */
     item?: Item | null;
+    /** List of clients for selection dropdown (new connection mode) */
     clients?: Client[];
+    /** Callback when link is successfully created */
     onLinkCreated?: (response: CreateLinkTokenResponse) => void;
 }
 
-type DialogMode = 'select' | 'creating' | 'success' | 'error';
+type DialogState = 'form' | 'creating' | 'success' | 'error';
 
-export const SendLinkDialog: React.FC<SendLinkDialogProps> = ({ open, onClose, client: preSelectedClient, item: preSelectedItem, clients = [], onLinkCreated }) => {
-    const [mode, setMode] = useState<DialogMode>('select');
-    const [selectedClient, setSelectedClient] = useState<Client | null>(preSelectedClient || null);
-    const [accountSelectionEnabled, setAccountSelectionEnabled] = useState(false);
+export const SendLinkDialog: React.FC<SendLinkDialogProps> = ({
+    open,
+    onClose,
+    client: preSelectedClient,
+    item: preSelectedItem,
+    clients = [],
+    onLinkCreated,
+}) => {
+    const [state, setState] = useState<DialogState>('form');
+    const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [linkResponse, setLinkResponse] = useState<CreateLinkTokenResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
+    // Determine mode based on whether item is provided
     const isUpdateMode = !!preSelectedItem;
-    const canCreate = !!selectedClient;
 
+    // Reset state when dialog opens/closes or pre-selections change
     useEffect(() => {
         if (open) {
-            setMode('select');
+            setState('form');
             setSelectedClient(preSelectedClient || null);
-            setAccountSelectionEnabled(false);
             setLinkResponse(null);
             setError(null);
             setCopied(false);
         }
     }, [open, preSelectedClient]);
 
+    const canCreate = !!selectedClient;
+
     const handleCreate = async () => {
         if (!selectedClient) return;
-        setMode('creating');
+
+        setState('creating');
         setError(null);
+
         try {
             const response = await createLinkToken({
                 clientId: selectedClient.client_id,
                 itemId: preSelectedItem?.item_id,
-                accountSelectionEnabled: isUpdateMode ? accountSelectionEnabled : undefined,
+                // Always enable account selection for all flows
+                accountSelectionEnabled: true,
             });
+
             setLinkResponse(response);
-            setMode('success');
+            setState('success');
             onLinkCreated?.(response);
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : (err as { error?: string })?.error || 'Failed to create link';
+            const errorMessage =
+                err instanceof Error
+                    ? err.message
+                    : (err as { error?: string })?.error || 'Failed to create link';
             setError(errorMessage);
-            setMode('error');
+            setState('error');
         }
     };
 
     const handleCopyLink = async () => {
         if (!linkResponse?.hostedLinkUrl) return;
+
         try {
             await navigator.clipboard.writeText(linkResponse.hostedLinkUrl);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch {
+            // Fallback for older browsers
             const textArea = document.createElement('textarea');
             textArea.value = linkResponse.hostedLinkUrl;
             document.body.appendChild(textArea);
@@ -86,107 +136,256 @@ export const SendLinkDialog: React.FC<SendLinkDialogProps> = ({ open, onClose, c
         }
     };
 
-    const renderContent = () => {
-        switch (mode) {
-            case 'select':
-                return (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <Alert severity={isUpdateMode ? 'info' : 'success'} icon={isUpdateMode ? <Refresh /> : <AccountBalance />}>
-                            {isUpdateMode ? `Update mode: Re-authenticate ${preSelectedItem?.institution_name || 'bank connection'}` : 'Create a new bank connection link'}
-                        </Alert>
-                        {!preSelectedClient && clients.length > 0 && (
-                            <Autocomplete
-                                options={clients}
-                                value={selectedClient}
-                                onChange={(_, newValue) => setSelectedClient(newValue)}
-                                getOptionLabel={(option) => getClientDisplayName(option)}
-                                renderOption={(props, option) => (
-                                    <Box component="li" {...props}>
-                                        <Person sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />
-                                        <Box>
-                                            <Typography variant="body2">{getClientDisplayName(option)}</Typography>
-                                            <Typography variant="caption" color="text.secondary">{option.email}</Typography>
-                                        </Box>
-                                    </Box>
-                                )}
-                                renderInput={(params) => <TextField {...params} label="Select Client" placeholder="Search by name or email..." fullWidth />}
-                                noOptionsText="No clients found"
-                            />
-                        )}
-                        {selectedClient && (
-                            <Paper variant="outlined" sx={{ p: 2 }}>
-                                <Typography variant="subtitle2" color="text.secondary" gutterBottom>Selected Client</Typography>
-                                <Typography variant="body1" fontWeight={600}>{getClientDisplayName(selectedClient)}</Typography>
-                                <Typography variant="body2" color="text.secondary">{selectedClient.email}</Typography>
-                                {selectedClient.phone_number && <Typography variant="body2" color="text.secondary">{selectedClient.phone_number}</Typography>}
-                            </Paper>
-                        )}
-                        {isUpdateMode && (
-                            <>
-                                <Divider />
-                                <FormControlLabel
-                                    control={<Switch checked={accountSelectionEnabled} onChange={(e) => setAccountSelectionEnabled(e.target.checked)} />}
-                                    label={<Box><Typography variant="body2">Allow account selection</Typography><Typography variant="caption" color="text.secondary">Let client add or remove accounts from this connection</Typography></Box>}
-                                />
-                            </>
-                        )}
-                        <Typography variant="body2" color="text.secondary">
-                            {isUpdateMode ? 'The client will receive a link to update their bank credentials. The link expires in 4 hours.' : 'The client will receive a link to securely connect their bank. The link expires in 4 hours.'}
-                        </Typography>
-                    </Box>
-                );
-            case 'creating':
-                return (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 4 }}>
-                        <CircularProgress size={48} />
-                        <Typography>Creating secure link...</Typography>
-                    </Box>
-                );
-            case 'success':
-                return (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <Alert severity="success">Link created successfully! Share it with your client.</Alert>
-                        <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50', display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="body2" sx={{ flex: 1, wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.75rem' }}>{linkResponse?.hostedLinkUrl}</Typography>
-                            <IconButton onClick={handleCopyLink} size="small" color={copied ? 'success' : 'default'} title="Copy link"><ContentCopy fontSize="small" /></IconButton>
-                        </Paper>
-                        {copied && <Alert severity="info" sx={{ py: 0.5 }}>Link copied to clipboard!</Alert>}
-                        <Box sx={{ display: 'flex', gap: 2 }}>
-                            <Button variant="contained" startIcon={<OpenInNew />} onClick={handleOpenLink} fullWidth>Open Link</Button>
-                            <Button variant="outlined" startIcon={<ContentCopy />} onClick={handleCopyLink} fullWidth>{copied ? 'Copied!' : 'Copy Link'}</Button>
+    const handleClose = () => {
+        onClose();
+    };
+
+    const renderForm = () => (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Mode indicator */}
+            <Alert
+                severity={isUpdateMode ? 'info' : 'success'}
+                icon={isUpdateMode ? <Refresh /> : <AccountBalance />}
+            >
+                {isUpdateMode
+                    ? `Update mode: Re-authenticate "${preSelectedItem?.institution_name || 'bank connection'}"`
+                    : 'Create a new bank connection link for the client'}
+            </Alert>
+
+            {/* Client selection - only show if not pre-selected and we have a client list */}
+            {!preSelectedClient && clients.length > 0 && (
+                <Autocomplete
+                    options={clients}
+                    value={selectedClient}
+                    onChange={(_, newValue) => setSelectedClient(newValue)}
+                    getOptionLabel={(option) => getClientDisplayName(option)}
+                    renderOption={(props, option) => (
+                        <Box component="li" {...props}>
+                            <Person sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />
+                            <Box>
+                                <Typography variant="body2">
+                                    {getClientDisplayName(option)}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    {option.email}
+                                </Typography>
+                            </Box>
                         </Box>
-                        <Typography variant="caption" color="text.secondary" textAlign="center">Link expires: {linkResponse?.expiresAt ? new Date(linkResponse.expiresAt).toLocaleString() : 'in 4 hours'}</Typography>
-                    </Box>
-                );
+                    )}
+                    renderInput={(params) => (
+                        <TextField
+                            {...params}
+                            label="Select Client"
+                            placeholder="Search by name or email..."
+                            fullWidth
+                        />
+                    )}
+                    noOptionsText="No clients found"
+                />
+            )}
+
+            {/* Selected client display */}
+            {selectedClient && (
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        Selected Client
+                    </Typography>
+                    <Typography variant="body1" fontWeight={600}>
+                        {getClientDisplayName(selectedClient)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        {selectedClient.email}
+                    </Typography>
+                    {selectedClient.phone_number && (
+                        <Typography variant="body2" color="text.secondary">
+                            {selectedClient.phone_number}
+                        </Typography>
+                    )}
+                </Paper>
+            )}
+
+            {/* Update mode item info */}
+            {isUpdateMode && preSelectedItem && (
+                <>
+                    <Divider />
+                    <Paper variant="outlined" sx={{ p: 2, bgcolor: 'info.light', color: 'info.contrastText' }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                            Bank to Update
+                        </Typography>
+                        <Typography variant="body1" fontWeight={600}>
+                            {preSelectedItem.institution_name || 'Unknown Bank'}
+                        </Typography>
+                        <Typography variant="body2">
+                            Status: {preSelectedItem.status.replace(/_/g, ' ')}
+                        </Typography>
+                    </Paper>
+                </>
+            )}
+
+            {/* Info text */}
+            <Typography variant="body2" color="text.secondary">
+                {isUpdateMode
+                    ? 'The client will receive a link to update their bank credentials and can add or remove accounts. The link expires in 4 hours.'
+                    : 'The client will receive a link to securely connect their bank and select which accounts to share. The link expires in 4 hours.'}
+            </Typography>
+        </Box>
+    );
+
+    const renderCreating = () => (
+        <Box
+            sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                py: 4,
+            }}
+        >
+            <CircularProgress size={48} />
+            <Typography>Creating secure link...</Typography>
+        </Box>
+    );
+
+    const renderSuccess = () => (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Alert severity="success" icon={<CheckCircle />}>
+                Link created successfully! Share it with your client.
+            </Alert>
+
+            {/* Link display */}
+            <Paper
+                variant="outlined"
+                sx={{
+                    p: 2,
+                    bgcolor: 'grey.50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                }}
+            >
+                <Typography
+                    variant="body2"
+                    sx={{
+                        flex: 1,
+                        wordBreak: 'break-all',
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem',
+                    }}
+                >
+                    {linkResponse?.hostedLinkUrl}
+                </Typography>
+                <IconButton
+                    onClick={handleCopyLink}
+                    size="small"
+                    color={copied ? 'success' : 'default'}
+                    title="Copy link"
+                >
+                    <ContentCopy fontSize="small" />
+                </IconButton>
+            </Paper>
+
+            {/* Copy confirmation */}
+            {copied && (
+                <Alert severity="info" sx={{ py: 0.5 }}>
+                    Link copied to clipboard!
+                </Alert>
+            )}
+
+            {/* Action buttons */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                    variant="contained"
+                    startIcon={<OpenInNew />}
+                    onClick={handleOpenLink}
+                    fullWidth
+                >
+                    Open Link
+                </Button>
+                <Button
+                    variant="outlined"
+                    startIcon={<ContentCopy />}
+                    onClick={handleCopyLink}
+                    fullWidth
+                >
+                    {copied ? 'Copied!' : 'Copy Link'}
+                </Button>
+            </Box>
+
+            {/* Expiration info */}
+            <Typography variant="caption" color="text.secondary" textAlign="center">
+                Link expires:{' '}
+                {linkResponse?.expiresAt
+                    ? new Date(linkResponse.expiresAt).toLocaleString()
+                    : 'in 4 hours'}
+            </Typography>
+        </Box>
+    );
+
+    const renderError = () => (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Alert severity="error">{error || 'An error occurred'}</Alert>
+            <Button variant="outlined" onClick={() => setState('form')}>
+                Try Again
+            </Button>
+        </Box>
+    );
+
+    const renderContent = () => {
+        switch (state) {
+            case 'form':
+                return renderForm();
+            case 'creating':
+                return renderCreating();
+            case 'success':
+                return renderSuccess();
             case 'error':
-                return (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <Alert severity="error">{error || 'An error occurred'}</Alert>
-                        <Button variant="outlined" onClick={() => setMode('select')}>Try Again</Button>
-                    </Box>
-                );
+                return renderError();
         }
     };
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2 } }}>
+        <Dialog
+            open={open}
+            onClose={handleClose}
+            maxWidth="sm"
+            fullWidth
+            PaperProps={{ sx: { borderRadius: 2 } }}
+        >
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {isUpdateMode ? <Refresh /> : <Send />}
-                    <Typography variant="h6">{isUpdateMode ? 'Send Update Link' : 'Send Bank Connection Link'}</Typography>
+                    <Typography variant="h6">
+                        {isUpdateMode ? 'Send Update Link' : 'Send Bank Connection Link'}
+                    </Typography>
                 </Box>
-                <IconButton onClick={onClose} size="small"><Close /></IconButton>
+                <IconButton onClick={handleClose} size="small">
+                    <Close />
+                </IconButton>
             </DialogTitle>
+
             <DialogContent dividers>{renderContent()}</DialogContent>
-            {mode === 'select' && (
+
+            {state === 'form' && (
                 <DialogActions sx={{ px: 3, py: 2 }}>
-                    <Button onClick={onClose} color="inherit">Cancel</Button>
-                    <Button variant="contained" onClick={handleCreate} disabled={!canCreate} startIcon={<Send />}>Create Link</Button>
+                    <Button onClick={handleClose} color="inherit">
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleCreate}
+                        disabled={!canCreate}
+                        startIcon={<Send />}
+                    >
+                        Create Link
+                    </Button>
                 </DialogActions>
             )}
-            {mode === 'success' && (
+
+            {state === 'success' && (
                 <DialogActions sx={{ px: 3, py: 2 }}>
-                    <Button onClick={onClose} variant="contained">Done</Button>
+                    <Button onClick={handleClose} variant="contained">
+                        Done
+                    </Button>
                 </DialogActions>
             )}
         </Dialog>

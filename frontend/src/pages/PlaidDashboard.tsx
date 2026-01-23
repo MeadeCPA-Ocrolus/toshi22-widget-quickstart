@@ -5,22 +5,15 @@
 
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Box, Typography, Container } from '@mui/material';
-import { AccountBalance } from '@mui/icons-material';
+import { Box, Container } from '@mui/material';
 import { ClientList } from './ClientList';
 import { ClientDetail } from './ClientDetail';
 
 export const PlaidDashboard: React.FC = () => {
     return (
         <Box sx={{ minHeight: '100vh', bgcolor: 'transparent' }}>
-            <Box sx={{ bgcolor: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(10px)', borderBottom: 1, borderColor: 'divider' }}>
-                <Container maxWidth="xl">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
-                        <AccountBalance sx={{ color: 'primary.main' }} />
-                        <Typography variant="h6" fontWeight={600}>Bank Connections</Typography>
-                    </Box>
-                </Container>
-            </Box>
+            {/* Removed the redundant "Bank Connections" sub-header - 
+                the main Navigation tabs already show which section we're in */}
             <Container maxWidth="xl" sx={{ py: 2 }}>
                 <Routes>
                     <Route path="/" element={<ClientList />} />
