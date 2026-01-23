@@ -73,7 +73,17 @@ export async function deleteClient(clientId: number): Promise<{ message: string 
 }
 
 export async function getClientItems(clientId: number): Promise<ClientItemsResponse> {
-    return fetchApi<ClientItemsResponse>(`/clients/${clientId}/items`);
+    // API returns items only at /clients/:id/items, client data at /clients/:id
+    // So we fetch both in parallel
+    const [clientData, itemsData] = await Promise.all([
+        fetchApi<Client>(`/clients/${clientId}`),
+        fetchApi<{ items: ItemWithAccounts[] }>(`/clients/${clientId}/items`),
+    ]);
+    
+    return {
+        client: clientData,
+        items: itemsData.items || [],
+    };
 }
 
 export async function getItem(itemId: number): Promise<{ item: ItemWithAccounts }> {

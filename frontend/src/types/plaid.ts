@@ -109,3 +109,8 @@ export interface ClientItemsResponse {
     client: Client;
     items: ItemWithAccounts[];
 }
+
+// Actual API response (items endpoint doesn't include client)
+interface ItemsOnlyResponse {
+    items: ItemWithAccounts[];
+}
