@@ -57,16 +57,6 @@ interface ItemLookup {
 }
 
 /**
- * Link token lookup result
- * interface LinkTokenLookup {
-    link_token: string;
-    client_id: number;
-    status: string;
-}
- */
-
-
-/**
  * Generate a unique webhook ID for idempotency
  */
 function generateWebhookId(webhook: PlaidWebhook, timestamp: Date): string {
@@ -406,7 +396,9 @@ async function handleSessionFinished(
     const clientId = linkRecord.client_id;
     
     // Record the session attempt
-    const sessionStatus = webhook.status || 'UNKNOWN';
+    // Note: webhook.status should be 'SUCCESS' for successful completions per Plaid docs
+    // But we also check for public_token presence as a fallback
+    const sessionStatus = webhook.status || (webhook.public_token || webhook.public_tokens?.[0] ? 'SUCCESS' : 'UNKNOWN');
     const errorCode = webhook.error?.error_code || null;
     const errorMessage = webhook.error?.error_message || null;
     const errorType = webhook.error?.error_type || null;
@@ -460,7 +452,8 @@ async function handleSessionFinished(
     }
 
     // Handle non-success statuses
-    if (sessionStatus !== 'SUCCESS') {
+    // Note: Plaid sends "success" (lowercase), so we normalize to lowercase for comparison
+    if (sessionStatus?.toLowerCase() !== 'success') {
         context.log(`Link session ended with status: ${sessionStatus}`);
         
         // Log details for CPA visibility
