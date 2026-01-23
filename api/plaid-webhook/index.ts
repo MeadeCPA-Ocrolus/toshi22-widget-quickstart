@@ -58,12 +58,13 @@ interface ItemLookup {
 
 /**
  * Link token lookup result
- */
-interface LinkTokenLookup {
+ * interface LinkTokenLookup {
     link_token: string;
     client_id: number;
     status: string;
 }
+ */
+
 
 /**
  * Generate a unique webhook ID for idempotency
@@ -213,6 +214,53 @@ async function updateItemStatus(
             // User revoked ALL permissions for this Item
             newStatus = 'archived';
             context.log(`Item ${webhook.item_id} permissions revoked by user`);
+            
+            // Get internal item_id
+            const itemLookup = await executeQuery<{ item_id: number }>(
+                `SELECT item_id FROM items WHERE plaid_item_id = @plaidItemId`,
+                { plaidItemId: webhook.item_id }
+            );
+            
+            if (itemLookup.recordset.length > 0) {
+                const internalItemId = itemLookup.recordset[0].item_id;
+                
+                // Archive all transactions for this item (excludes from financial calculations)
+                // Uses stored procedure if available, falls back to direct update
+                try {
+                    await executeQuery(
+                        `EXEC sp_archive_item_transactions @item_id = @itemId, @reason = 'item_archived'`,
+                        { itemId: internalItemId }
+                    );
+                    context.log(`Archived transactions for item ${internalItemId}`);
+                } catch (spError) {
+                    // Stored procedure might not exist yet, fall back to direct update
+                    context.log.warn(`sp_archive_item_transactions not available, using direct update`);
+                    
+                    // Mark all accounts for this item as inactive
+                    await executeQuery(
+                        `UPDATE accounts 
+                         SET is_active = 0, updated_at = GETDATE()
+                         WHERE item_id = @itemId`,
+                        { itemId: internalItemId }
+                    );
+                    
+                    // Archive transactions if the column exists
+                    try {
+                        await executeQuery(
+                            `UPDATE t
+                             SET t.is_archived = 1, t.archived_at = GETDATE(), t.archive_reason = 'item_archived'
+                             FROM transactions t
+                             JOIN accounts a ON t.account_id = a.account_id
+                             WHERE a.item_id = @itemId AND t.is_archived = 0`,
+                            { itemId: internalItemId }
+                        );
+                    } catch (txnError) {
+                        // is_archived column might not exist yet
+                        context.log.warn(`Could not archive transactions (column may not exist yet)`);
+                    }
+                }
+                context.log(`Marked all accounts inactive for archived item ${webhook.item_id}`);
+            }
             break;
 
         case 'NEW_ACCOUNTS_AVAILABLE':
@@ -332,43 +380,141 @@ async function handleSessionFinished(
     webhook: PlaidWebhook
 ): Promise<void> {
     context.log('SESSION_FINISHED webhook received');
+    context.log(`Session status: ${webhook.status}`);
     
-    // Get public_token - can be in public_token or public_tokens array
-    const publicToken = webhook.public_token || webhook.public_tokens?.[0];
-    
-    if (!publicToken) {
-        context.log.warn('SESSION_FINISHED webhook missing public_token');
-        return;
-    }
-
     if (!webhook.link_token) {
         context.log.warn('SESSION_FINISHED webhook missing link_token');
         return;
     }
 
-    // Step 1: Look up client_id from link_token
-    context.log(`Looking up link_token: ${webhook.link_token}`);
-    const linkResult = await executeQuery<LinkTokenLookup>(
+    // Look up client_id from link_token
+    // Note: link_token (the string) IS the primary key, not a separate link_token_id
+    const linkLookup = await executeQuery<{ link_token: string; client_id: number; status: string }>(
         `SELECT link_token, client_id, status 
          FROM link_tokens 
          WHERE link_token = @linkToken`,
         { linkToken: webhook.link_token }
     );
 
-    if (linkResult.recordset.length === 0) {
+    if (linkLookup.recordset.length === 0) {
         context.log.error(`Link token not found: ${webhook.link_token}`);
         throw new Error('Link token not found in database');
     }
 
-    const linkRecord = linkResult.recordset[0];
+    const linkRecord = linkLookup.recordset[0];
+    const linkToken = linkRecord.link_token;  // The PK
     const clientId = linkRecord.client_id;
-    context.log(`Found client_id: ${clientId} for link_token`);
+    
+    // Record the session attempt
+    const sessionStatus = webhook.status || 'UNKNOWN';
+    const errorCode = webhook.error?.error_code || null;
+    const errorMessage = webhook.error?.error_message || null;
+    const errorType = webhook.error?.error_type || null;
+
+    // Insert into link_sessions for history tracking
+    try {
+        await executeQuery(
+            `INSERT INTO link_sessions (
+                link_token, link_session_id, status, 
+                error_code, error_message, error_type
+            )
+            VALUES (
+                @linkToken, @linkSessionId, @status,
+                @errorCode, @errorMessage, @errorType
+            )`,
+            {
+                linkToken,
+                linkSessionId: webhook.link_session_id || null,
+                status: sessionStatus,
+                errorCode,
+                errorMessage,
+                errorType,
+            }
+        );
+    } catch (sessionErr) {
+        // Table might not exist yet - log but continue
+        context.log.warn(`Could not insert link_session (table may not exist): ${sessionErr}`);
+    }
+
+    // Update link_tokens with session info
+    try {
+        await executeQuery(
+            `UPDATE link_tokens 
+             SET last_session_status = @status,
+                 last_session_error_code = @errorCode,
+                 last_session_error_message = @errorMessage,
+                 link_session_id = @linkSessionId,
+                 attempt_count = ISNULL(attempt_count, 0) + 1
+             WHERE link_token = @linkToken`,
+            {
+                status: sessionStatus,
+                errorCode,
+                errorMessage,
+                linkSessionId: webhook.link_session_id || null,
+                linkToken,
+            }
+        );
+    } catch (updateErr) {
+        // Columns might not exist yet - log but continue
+        context.log.warn(`Could not update link_token session info: ${updateErr}`);
+    }
+
+    // Handle non-success statuses
+    if (sessionStatus !== 'SUCCESS') {
+        context.log(`Link session ended with status: ${sessionStatus}`);
+        
+        // Log details for CPA visibility
+        if (errorCode) {
+            context.log(`Error code: ${errorCode}`);
+            context.log(`Error message: ${errorMessage}`);
+        }
+
+        // Determine what happened and log appropriately
+        switch (sessionStatus) {
+            case 'EXITED':
+                context.log(`Client exited Link without completing for client ${clientId}`);
+                break;
+            case 'REQUIRES_CREDENTIALS':
+                context.log(`Client didn't provide credentials for client ${clientId}`);
+                break;
+            case 'REQUIRES_QUESTIONS':
+                context.log(`Client didn't answer security questions for client ${clientId}`);
+                break;
+            case 'REQUIRES_SELECTIONS':
+                context.log(`Client didn't select accounts for client ${clientId}`);
+                break;
+            case 'INSTITUTION_NOT_FOUND':
+                context.log(`Institution not found for client ${clientId}`);
+                break;
+            case 'INSTITUTION_NOT_SUPPORTED':
+                context.log(`Institution not supported for client ${clientId}`);
+                break;
+            default:
+                context.log(`Unknown status: ${sessionStatus} for client ${clientId}`);
+        }
+
+        // Don't process further - no public_token to exchange
+        return;
+    }
+
+    // SUCCESS flow continues below...
+    context.log('Processing successful Link completion');
+    
+    // Get public_token - can be in public_token or public_tokens array
+    const publicToken = webhook.public_token || webhook.public_tokens?.[0];
+    
+    if (!publicToken) {
+        context.log.warn('SESSION_FINISHED SUCCESS but missing public_token');
+        return;
+    }
 
     // Check if already processed
     if (linkRecord.status === 'used') {
         context.log.warn(`Link token already used: ${webhook.link_token}`);
         return;
     }
+
+    context.log(`Found client_id: ${clientId} for link_token`);
 
     // Step 2: Exchange public_token → access_token
     context.log('Exchanging public_token for access_token...');
@@ -587,23 +733,37 @@ async function handleSessionFinished(
     }
 
     // Step 6: Fetch and save accounts
+    // 
+    // ACCOUNT DUPLICATE PREVENTION:
+    // When a user re-links the same bank, Plaid returns NEW plaid_account_ids.
+    // To prevent duplicate accounts, we match by:
+    // 1. First: exact plaid_account_id match (update mode, same session)
+    // 2. Second: item_id + mask + account_type + account_subtype (re-link scenario)
+    // 
+    // If we find a match by #2, we UPDATE the existing account with the new plaid_account_id
+    // instead of creating a duplicate.
+    
     context.log('Fetching accounts from Plaid...');
     const accountsResult = await getAccounts(accessToken);
     
-    // Track which Plaid account IDs we received (for Step 7)
-    const receivedPlaidAccountIds: string[] = [];
+    // Track which internal account IDs we've updated (for Step 7)
+    const processedAccountIds: number[] = [];
     
     for (const account of accountsResult.accounts) {
-        receivedPlaidAccountIds.push(account.account_id);
+        // Extract mask from account (usually last 4 digits)
+        const mask = account.mask || null;
         
-        // Check if account exists
-        const existingAccount = await executeQuery<{ account_id: number }>(
+        // Check 1: Exact plaid_account_id match
+        const existingByPlaidId = await executeQuery<{ account_id: number }>(
             `SELECT account_id FROM accounts WHERE plaid_account_id = @plaidAccountId`,
             { plaidAccountId: account.account_id }
         );
 
-        if (existingAccount.recordset.length > 0) {
-            // Update existing account
+        if (existingByPlaidId.recordset.length > 0) {
+            // Exact match - update existing account
+            const accountId = existingByPlaidId.recordset[0].account_id;
+            processedAccountIds.push(accountId);
+            
             await executeQuery(
                 `UPDATE accounts 
                  SET account_name = @accountName,
@@ -614,60 +774,114 @@ async function handleSessionFinished(
                      is_active = 1,
                      last_updated_datetime = GETDATE(),
                      updated_at = GETDATE()
-                 WHERE plaid_account_id = @plaidAccountId`,
+                 WHERE account_id = @accountId`,
                 {
                     accountName: account.name,
                     officialName: account.official_name,
                     currentBalance: account.balances.current,
                     availableBalance: account.balances.available,
                     creditLimit: account.balances.limit,
-                    plaidAccountId: account.account_id,
+                    accountId,
                 }
             );
-            context.log(`Updated account: ${account.name}`);
+            context.log(`Updated account by plaid_id: ${account.name}`);
+            
         } else {
-            // Insert new account
-            await executeQuery(
-                `INSERT INTO accounts (
-                    item_id, plaid_account_id, account_name, official_name,
-                    account_type, account_subtype,
-                    current_balance, available_balance, credit_limit,
-                    is_active, last_updated_datetime
-                )
-                VALUES (
-                    @itemId, @plaidAccountId, @accountName, @officialName,
-                    @accountType, @accountSubtype,
-                    @currentBalance, @availableBalance, @creditLimit,
-                    1, GETDATE()
-                )`,
+            // Check 2: Match by item_id + mask + type + subtype (handles re-link scenario)
+            // Only match active OR recently inactive accounts for this item
+            const existingByMask = await executeQuery<{ account_id: number; plaid_account_id: string }>(
+                `SELECT TOP 1 account_id, plaid_account_id FROM accounts 
+                 WHERE item_id = @itemId 
+                   AND account_type = @accountType 
+                   AND account_subtype = @accountSubtype
+                   AND (mask = @mask OR (@mask IS NULL AND mask IS NULL))
+                 ORDER BY is_active DESC, last_updated_datetime DESC`,
                 {
                     itemId,
-                    plaidAccountId: account.account_id,
-                    accountName: account.name,
-                    officialName: account.official_name,
                     accountType: account.type,
                     accountSubtype: account.subtype,
-                    currentBalance: account.balances.current,
-                    availableBalance: account.balances.available,
-                    creditLimit: account.balances.limit,
+                    mask,
                 }
             );
-            context.log(`Created account: ${account.name}`);
+            
+            if (existingByMask.recordset.length > 0) {
+                // Found matching account - update it with new plaid_account_id
+                const existingAccount = existingByMask.recordset[0];
+                processedAccountIds.push(existingAccount.account_id);
+                
+                context.log(`ACCOUNT MATCH: ${account.name} (mask: ${mask}) matched existing account ${existingAccount.account_id}`);
+                context.log(`  Old plaid_account_id: ${existingAccount.plaid_account_id}`);
+                context.log(`  New plaid_account_id: ${account.account_id}`);
+                
+                await executeQuery(
+                    `UPDATE accounts 
+                     SET plaid_account_id = @newPlaidAccountId,
+                         account_name = @accountName,
+                         official_name = @officialName,
+                         current_balance = @currentBalance,
+                         available_balance = @availableBalance,
+                         credit_limit = @creditLimit,
+                         is_active = 1,
+                         last_updated_datetime = GETDATE(),
+                         updated_at = GETDATE()
+                     WHERE account_id = @accountId`,
+                    {
+                        newPlaidAccountId: account.account_id,
+                        accountName: account.name,
+                        officialName: account.official_name,
+                        currentBalance: account.balances.current,
+                        availableBalance: account.balances.available,
+                        creditLimit: account.balances.limit,
+                        accountId: existingAccount.account_id,
+                    }
+                );
+                context.log(`Updated account by mask match: ${account.name}`);
+                
+            } else {
+                // No match found - create new account
+                const insertResult = await executeQuery<{ account_id: number }>(
+                    `INSERT INTO accounts (
+                        item_id, plaid_account_id, account_name, official_name,
+                        account_type, account_subtype, mask,
+                        current_balance, available_balance, credit_limit,
+                        is_active, last_updated_datetime
+                    )
+                    OUTPUT INSERTED.account_id
+                    VALUES (
+                        @itemId, @plaidAccountId, @accountName, @officialName,
+                        @accountType, @accountSubtype, @mask,
+                        @currentBalance, @availableBalance, @creditLimit,
+                        1, GETDATE()
+                    )`,
+                    {
+                        itemId,
+                        plaidAccountId: account.account_id,
+                        accountName: account.name,
+                        officialName: account.official_name,
+                        accountType: account.type,
+                        accountSubtype: account.subtype,
+                        mask,
+                        currentBalance: account.balances.current,
+                        availableBalance: account.balances.available,
+                        creditLimit: account.balances.limit,
+                    }
+                );
+                processedAccountIds.push(insertResult.recordset[0].account_id);
+                context.log(`Created new account: ${account.name} (mask: ${mask})`);
+            }
         }
     }
 
-    // Step 7: Mark accounts NOT returned by Plaid as inactive
-    // This handles the case where user removed accounts in update mode
-    if (receivedPlaidAccountIds.length > 0) {
-        // Build parameterized query for the IN clause
-        // Note: We use string interpolation here but the IDs come from Plaid, not user input
-        const placeholders = receivedPlaidAccountIds.map(id => `'${id}'`).join(',');
+    // Step 7: Mark accounts NOT processed as inactive
+    // These are accounts that existed before but weren't in the latest Plaid response
+    if (processedAccountIds.length > 0) {
+        const idList = processedAccountIds.join(',');
         
         await executeQuery(
             `UPDATE accounts 
              SET is_active = 0, updated_at = GETDATE()
              WHERE item_id = @itemId 
-               AND plaid_account_id NOT IN (${placeholders})
+               AND account_id NOT IN (${idList})
                AND is_active = 1`,
             { itemId }
         );

@@ -176,6 +176,43 @@ export async function createLinkToken(
 }
 
 // ============================================================================
+// Link Sessions (Failed Link Tracking)
+// ============================================================================
+
+/**
+ * Failed link session info from API
+ * Note: link_token (string) is the primary key, not link_token_id
+ */
+export interface FailedLinkSession {
+    link_token: string;  // The PK
+    client_id: number;
+    last_session_status: string;
+    last_session_error_code: string | null;
+    last_session_error_message: string | null;
+    attempt_count: number;
+    created_at: string;
+    expires_at: string;
+    used_at: string | null;  // Not updated_at
+    action_needed: string;
+}
+
+/**
+ * Get failed link sessions for a client
+ * Returns links that need CPA attention (failed, expired, incomplete)
+ */
+export async function getFailedLinkSessions(clientId: number): Promise<FailedLinkSession[]> {
+    try {
+        const response = await fetchApi<{ linkTokens: FailedLinkSession[] }>(
+            `/link-sessions?clientId=${clientId}&needsAction=true`
+        );
+        return response.linkTokens || [];
+    } catch {
+        // Endpoint may not exist yet - return empty array
+        return [];
+    }
+}
+
+// ============================================================================
 // Transaction Sync (Sprint 3)
 // ============================================================================
 

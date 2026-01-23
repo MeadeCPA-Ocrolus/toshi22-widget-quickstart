@@ -16,6 +16,7 @@ import {
     IconButton,
     Tooltip,
     Alert,
+    AlertTitle,
     CircularProgress,
     Divider,
     Paper,
@@ -45,6 +46,7 @@ import {
     CalendarToday,
     Delete,
     LockReset,
+    LinkOff,
 } from '@mui/icons-material';
 import {
     Client,
@@ -60,6 +62,8 @@ import {
     formatRelativeTime,
     formatCurrency,
     deleteItem,
+    getFailedLinkSessions,
+    FailedLinkSession,
 } from '../services/api';
 import {
     StatusBadge,
@@ -78,6 +82,10 @@ export const ClientDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+
+    // Failed link sessions
+    const [failedLinks, setFailedLinks] = useState<FailedLinkSession[]>([]);
+    const [showFailedLinks, setShowFailedLinks] = useState(true);
 
     // Dialog state
     const [sendLinkDialogOpen, setSendLinkDialogOpen] = useState(false);
@@ -115,6 +123,14 @@ export const ClientDetail: React.FC = () => {
                     .map((item) => item.item_id)
             );
             setExpandedItems(needsAttention);
+
+            // Fetch failed link sessions for this client
+            try {
+                const failed = await getFailedLinkSessions(parseInt(clientId, 10));
+                setFailedLinks(failed);
+            } catch {
+                // Endpoint may not exist yet - silently fail
+            }
         } catch (err) {
             const errorMessage =
                 err instanceof Error
@@ -213,6 +229,26 @@ export const ClientDetail: React.FC = () => {
         return ['login_required', 'needs_update', 'error'].includes(item.status);
     };
 
+    // Get human-readable message for failed link status
+    const getFailedLinkMessage = (session: FailedLinkSession): string => {
+        switch (session.last_session_status) {
+            case 'EXITED':
+                return 'Client exited without completing';
+            case 'REQUIRES_CREDENTIALS':
+                return 'Client did not enter bank credentials';
+            case 'REQUIRES_QUESTIONS':
+                return 'Client did not answer security questions';
+            case 'REQUIRES_SELECTIONS':
+                return 'Client did not select accounts';
+            case 'INSTITUTION_NOT_SUPPORTED':
+                return 'Bank not supported';
+            case 'INSTITUTION_NOT_FOUND':
+                return 'Bank not found';
+            default:
+                return session.last_session_status || 'Link failed';
+        }
+    };
+
     if (loading) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -252,6 +288,46 @@ export const ClientDetail: React.FC = () => {
                     </Typography>
                 </Breadcrumbs>
             </Paper>
+
+            {/* Failed Link Sessions Alert */}
+            {failedLinks.length > 0 && showFailedLinks && (
+                <Alert 
+                    severity="warning" 
+                    sx={{ mb: 2, bgcolor: 'rgba(255, 255, 255, 0.95)' }}
+                    icon={<LinkOff />}
+                    onClose={() => setShowFailedLinks(false)}
+                >
+                    <AlertTitle>
+                        {failedLinks.length} Failed Link Attempt{failedLinks.length > 1 ? 's' : ''}
+                    </AlertTitle>
+                    <Box sx={{ mt: 1 }}>
+                        {failedLinks.slice(0, 3).map((session, idx) => (
+                            <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+                                • {getFailedLinkMessage(session)}
+                                {session.created_at && (
+                                    <Typography component="span" variant="caption" color="text.secondary">
+                                        {' '}— {formatRelativeTime(session.created_at)}
+                                    </Typography>
+                                )}
+                            </Typography>
+                        ))}
+                        {failedLinks.length > 3 && (
+                            <Typography variant="body2" color="text.secondary">
+                                ... and {failedLinks.length - 3} more
+                            </Typography>
+                        )}
+                    </Box>
+                    <Button 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ mt: 1 }}
+                        onClick={handleSendNewLink}
+                        startIcon={<Send />}
+                    >
+                        Resend Link
+                    </Button>
+                </Alert>
+            )}
 
             {/* Header */}
             <Card sx={{ mb: 3, bgcolor: 'rgba(255, 255, 255, 0.95)' }}>
