@@ -125,6 +125,7 @@ async function getItem(context, itemId) {
             plaid_item_id,
             institution_id,
             institution_name,
+            is_oath,
             status,
             last_error_code,
             last_error_message,

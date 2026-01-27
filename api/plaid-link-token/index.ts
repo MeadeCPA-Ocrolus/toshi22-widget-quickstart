@@ -64,7 +64,7 @@ const httpTrigger: AzureFunction = async function (
     }
 
     try {
-        const { clientId, itemId, accountSelectionEnabled } = req.body || {};
+        const { clientId, itemId } = req.body || {};
 
         // Validate clientId
         if (!clientId) {
@@ -76,7 +76,7 @@ const httpTrigger: AzureFunction = async function (
             return;
         }
 
-        context.log(`Creating link token for client: ${clientId}, itemId: ${itemId || 'new'}, accountSelection: ${accountSelectionEnabled || false}`);
+        context.log(`Creating link token for client: ${clientId}, itemId: ${itemId || 'new'}`);
 
         // Fetch client from database
         const clientResult = await executeQuery<ClientRecord>(
@@ -132,7 +132,7 @@ const httpTrigger: AzureFunction = async function (
             phoneNumber: client.phone_number || undefined,
             email: client.email,
             accessToken, // undefined for new link, set for update mode
-            accountSelectionEnabled: accountSelectionEnabled || false, // Allow account changes in update mode
+            accountSelectionEnabled: true,
         });
 
         context.log(`Link token created: ${linkResponse.link_token}`);
@@ -160,7 +160,7 @@ const httpTrigger: AzureFunction = async function (
                 expiresAt: linkResponse.expiration,
                 clientName: `${client.first_name} ${client.last_name}`,
                 isUpdateMode: !!itemId,
-                accountSelectionEnabled: !!(itemId && accountSelectionEnabled), // Only relevant for update mode
+                accountSelectionEnabled: true, // Only relevant for update mode
             },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };

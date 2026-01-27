@@ -168,6 +168,7 @@ async function getItem(context: Context, itemId: number): Promise<void> {
             plaid_item_id,
             institution_id,
             institution_name,
+            is_oath,
             status,
             last_error_code,
             last_error_message,
