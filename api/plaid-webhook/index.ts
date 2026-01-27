@@ -17,6 +17,34 @@ import { executeQuery } from '../shared/database';
 import { encrypt, decrypt } from '../shared/encryption';
 import { exchangePublicToken, getItem, getAccounts, getPlaidClient } from '../shared/plaid-client';
 
+// OAuth institutions - these use OAuth flow instead of credential-based
+// This list is not exhaustive but covers major OAuth banks
+const OAUTH_INSTITUTIONS = [
+    'ins_127989', // Chase
+    'ins_127991', // Wells Fargo
+    'ins_56',     // Chase (alternate)
+    'ins_4',      // Wells Fargo (alternate)
+    'ins_5',      // Bank of America
+    'ins_127990', // Bank of America
+    'ins_3',      // US Bank
+    'ins_12',     // US Bank (alternate)
+    'ins_127987', // Capital One
+    'ins_9',      // Capital One (alternate)
+    'ins_10',     // American Express
+    'ins_127986', // Citi
+    'ins_7',      // TD Bank
+    'ins_13',     // PNC
+    'ins_14',     // Regions
+];
+
+/**
+ * Check if an institution uses OAuth
+ */
+function isOAuthInstitution(institutionId: string | null): boolean {
+    if (!institutionId) return false;
+    return OAUTH_INSTITUTIONS.includes(institutionId);
+}
+
 /**
  * Plaid webhook payload structure
  * 
@@ -249,7 +277,6 @@ async function updateItemStatus(
                         context.log.warn(`Could not archive transactions (column may not exist yet)`);
                     }
                 }
-                context.log(`Marked all accounts inactive for archived item ${webhook.item_id}`);
             }
             break;
 
@@ -259,28 +286,25 @@ async function updateItemStatus(
             context.log(`Item ${webhook.item_id} has new accounts available`);
             break;
 
+        case 'PENDING_EXPIRATION':
+            // EU/UK: Consent expiring in 7 days
+            newStatus = 'login_required';
+            context.log(`Item ${webhook.item_id} consent expiring: ${webhook.consent_expiration_time}`);
+            break;
+
         case 'SYNC_UPDATES_AVAILABLE':
-            // New transactions ready - just set a flag, don't change status
+            // Transactions are ready to sync
+            // Don't change status, just set a flag
+            context.log(`Item ${webhook.item_id} has transaction updates available`);
             await executeQuery(
                 `UPDATE items 
                  SET has_sync_updates = 1, updated_at = GETDATE()
                  WHERE plaid_item_id = @plaidItemId`,
                 { plaidItemId: webhook.item_id }
             );
-            context.log(`Item ${webhook.item_id} has sync updates available`);
-            return;  // Early return - we're done
-
-        case 'WEBHOOK_UPDATE_ACKNOWLEDGED':
-            // Just informational - webhook URL was updated
-            context.log(`Webhook URL updated for item ${webhook.item_id}`);
-            return;  // No status change needed
-
-        default:
-            context.log(`Unhandled ITEM webhook_code: ${webhook.webhook_code}`);
-            return;
+            return; // Don't update status
     }
 
-    // Update the item status in database
     if (newStatus) {
         await executeQuery(
             `UPDATE items 
@@ -288,15 +312,13 @@ async function updateItemStatus(
                  last_error_code = @errorCode,
                  last_error_message = @errorMessage,
                  last_error_timestamp = CASE WHEN @errorCode IS NOT NULL THEN GETDATE() ELSE last_error_timestamp END,
-                 consent_expiration_time = @consentExpiration,
                  updated_at = GETDATE()
              WHERE plaid_item_id = @plaidItemId`,
             {
+                plaidItemId: webhook.item_id,
                 status: newStatus,
                 errorCode,
                 errorMessage,
-                consentExpiration: webhook.consent_expiration_time || null,
-                plaidItemId: webhook.item_id,
             }
         );
         context.log(`Updated item ${webhook.item_id} status to: ${newStatus}`);
@@ -305,33 +327,23 @@ async function updateItemStatus(
 
 /**
  * Handle USER_ACCOUNT_REVOKED webhook
- * 
- * This is fired when a user revokes access to a SPECIFIC ACCOUNT (not the whole Item).
- * Currently only sent for PNC, but may be sent for other institutions in the future.
- * 
- * We mark the specific account as inactive, but the Item stays active.
+ * This is for when a user revokes access to a SINGLE account, not the whole item
  */
 async function handleAccountRevoked(
     context: Context,
     webhook: PlaidWebhook
 ): Promise<void> {
-    if (!webhook.item_id) {
-        context.log.warn('USER_ACCOUNT_REVOKED missing item_id');
-        return;
-    }
-
     if (!webhook.account_id) {
-        context.log.warn('USER_ACCOUNT_REVOKED missing account_id');
+        context.log.warn('USER_ACCOUNT_REVOKED webhook missing account_id');
         return;
     }
 
-    context.log(`Account revoked: ${webhook.account_id} on item ${webhook.item_id}`);
+    context.log(`Account ${webhook.account_id} permissions revoked by user`);
 
     // Mark the specific account as inactive
     await executeQuery(
         `UPDATE accounts 
-         SET is_active = 0, 
-             updated_at = GETDATE()
+         SET is_active = 0, updated_at = GETDATE()
          WHERE plaid_account_id = @plaidAccountId`,
         { plaidAccountId: webhook.account_id }
     );
@@ -344,34 +356,19 @@ async function handleAccountRevoked(
  * 
  * This fires when a client completes the Plaid Link flow (initial or update mode).
  * 
- * DUPLICATE ITEM PREVENTION:
- * Per Plaid docs (https://plaid.com/docs/link/duplicate-items/), we prevent duplicates by:
+ * Key logic:
  * 1. Checking if same plaid_item_id exists (update mode)
- * 2. Checking if same client + institution_id exists (duplicate prevention)
- * 
- * If duplicate detected, we update the existing item instead of creating a new one.
- * This prevents:
- * - Unnecessary billing for duplicate items
- * - Confusing application behavior
- * - Multiple items for the same bank connection
- * 
- * Steps:
- * 1. Look up client_id from link_token
- * 2. Exchange public_token → access_token
- * 3. Get item details (institution info)
- * 4. Check for duplicates (by plaid_item_id OR by client_id + institution_id)
- * 5. Encrypt and save/update item
- * 6. Fetch and save accounts
- * 7. Mark accounts NOT returned by Plaid as inactive (user may have removed them)
- * 8. Mark link_token as used
+ * 2. Checking if same client + institution exists (duplicate prevention)
+ * 3. Creating or updating item
+ * 4. Fetching and saving accounts
  */
 async function handleSessionFinished(
     context: Context,
     webhook: PlaidWebhook
 ): Promise<void> {
     context.log('SESSION_FINISHED webhook received');
-    context.log(`Session status: ${webhook.status}`);
     
+    // Validate link_token exists
     if (!webhook.link_token) {
         context.log.warn('SESSION_FINISHED webhook missing link_token');
         return;
@@ -435,15 +432,15 @@ async function handleSessionFinished(
              SET last_session_status = @status,
                  last_session_error_code = @errorCode,
                  last_session_error_message = @errorMessage,
-                 link_session_id = @linkSessionId,
-                 attempt_count = ISNULL(attempt_count, 0) + 1
+                 attempt_count = ISNULL(attempt_count, 0) + 1,
+                 link_session_id = @linkSessionId
              WHERE link_token = @linkToken`,
             {
+                linkToken,
                 status: sessionStatus,
                 errorCode,
                 errorMessage,
                 linkSessionId: webhook.link_session_id || null,
-                linkToken,
             }
         );
     } catch (updateErr) {
@@ -524,6 +521,12 @@ async function handleSessionFinished(
     const institutionName = (itemDetails.item as any).institution_name as string | null || null;
     context.log(`Institution: ${institutionName} (${institutionId})`);
 
+    // Determine if this is an OAuth institution
+    const isOAuth = isOAuthInstitution(institutionId);
+    if (isOAuth) {
+        context.log(`Institution ${institutionId} uses OAuth flow`);
+    }
+
     // Step 4: Encrypt access_token
     context.log('Encrypting access_token...');
     const { encryptedBuffer, keyId } = await encrypt(accessToken);
@@ -537,7 +540,7 @@ async function handleSessionFinished(
     // Detection methods (in order of priority):
     // A. Same plaid_item_id = UPDATE MODE (user re-authenticated existing Item)
     // B. Same client + institution_id (active) = DUPLICATE (user linked same bank again)
-    // C. Same client + institution_id (archived) = RESTORE (user re-linking previously removed bank)
+    // C. Same client + institution_id (archived) = NEW ITEM (don't restore archived)
     // D. Neither = NEW ITEM
     //
     // Note: Plaid docs also suggest comparing account mask/name, but institution_id
@@ -548,8 +551,12 @@ async function handleSessionFinished(
     // Per Plaid docs, at these institutions, creating a duplicate Item may invalidate
     // the old Item. We handle this by updating the existing item with the new credentials.
     
-    const existingItemByPlaidId = await executeQuery<{ item_id: number }>(
-        `SELECT item_id FROM items WHERE plaid_item_id = @plaidItemId`,
+    const existingItemByPlaidId = await executeQuery<{ 
+        item_id: number; 
+        status: string; 
+        institution_id: string | null;
+    }>(
+        `SELECT item_id, status, institution_id FROM items WHERE plaid_item_id = @plaidItemId`,
         { plaidItemId }
     );
 
@@ -563,25 +570,33 @@ async function handleSessionFinished(
         { clientId, institutionId, plaidItemId }
     );
 
-    // Check for same client + institution (archived items - restore scenario)
-    const existingArchivedItemByInstitution = await executeQuery<{ item_id: number; plaid_item_id: string }>(
-        `SELECT TOP 1 item_id, plaid_item_id FROM items 
-         WHERE client_id = @clientId 
-           AND institution_id = @institutionId 
-           AND status = 'archived'
-           AND plaid_item_id != @plaidItemId
-         ORDER BY updated_at DESC`,
-        { clientId, institutionId, plaidItemId }
-    );
-
     let itemId: number;
     let isDuplicate = false;
-    let isRestored = false;
 
     if (existingItemByPlaidId.recordset.length > 0) {
         // Case A: Same plaid_item_id - this is UPDATE MODE
         // User went through Link to re-authenticate or update accounts
-        itemId = existingItemByPlaidId.recordset[0].item_id;
+        const existingItem = existingItemByPlaidId.recordset[0];
+        
+        // VALIDATION 1: Reject update mode on archived items
+        // Archived means user revoked permissions or CPA intentionally removed
+        // Should require fresh new link, not update mode
+        if (existingItem.status === 'archived') {
+            context.log.error(`REJECTED: Update mode attempted on archived item ${existingItem.item_id}`);
+            context.log.error(`Archived items cannot be updated - CPA should create a new link instead`);
+            throw new Error('Cannot update archived item. Please create a new link for this client.');
+        }
+        
+        // VALIDATION 2: Reject if institution changed during update mode
+        // This shouldn't happen but indicates something is wrong
+        if (existingItem.institution_id && institutionId && existingItem.institution_id !== institutionId) {
+            context.log.error(`REJECTED: Institution mismatch during update mode`);
+            context.log.error(`Expected institution: ${existingItem.institution_id}, Got: ${institutionId}`);
+            context.log.error(`This indicates a potential security issue or data corruption`);
+            throw new Error(`Institution mismatch during update mode. Expected ${existingItem.institution_id}, got ${institutionId}. Please investigate.`);
+        }
+        
+        itemId = existingItem.item_id;
         context.log(`Update mode: Updating existing item ${itemId}`);
         
         await executeQuery(
@@ -589,6 +604,7 @@ async function handleSessionFinished(
              SET access_token = @accessToken,
                  access_token_key_id = @keyId,
                  status = 'active',
+                 is_oauth = @isOAuth,
                  last_error_code = NULL,
                  last_error_message = NULL,
                  last_error_timestamp = NULL,
@@ -597,6 +613,7 @@ async function handleSessionFinished(
             {
                 accessToken: encryptedBuffer,
                 keyId,
+                isOAuth: isOAuth ? 1 : 0,
                 itemId,
             }
         );
@@ -651,6 +668,7 @@ async function handleSessionFinished(
                  access_token = @accessToken,
                  access_token_key_id = @keyId,
                  status = 'active',
+                 is_oauth = @isOAuth,
                  last_error_code = NULL,
                  last_error_message = NULL,
                  last_error_timestamp = NULL,
@@ -660,57 +678,26 @@ async function handleSessionFinished(
                 plaidItemId,
                 accessToken: encryptedBuffer,
                 keyId,
+                isOAuth: isOAuth ? 1 : 0,
                 itemId,
             }
         );
         context.log(`Updated existing item ${itemId} with new plaid_item_id (duplicate prevention)`);
         
-    } else if (existingArchivedItemByInstitution.recordset.length > 0) {
-        // Case C: RESTORE ARCHIVED ITEM
-        // Same client previously had an item at this institution that was archived
-        // (e.g., user revoked permissions, then re-linked)
-        // Restore the archived item instead of creating a new one
-        
-        const archivedItem = existingArchivedItemByInstitution.recordset[0];
-        itemId = archivedItem.item_id;
-        isRestored = true;
-        
-        context.log(`RESTORING ARCHIVED ITEM: Client ${clientId} re-linking ${institutionName}`);
-        context.log(`Archived item_id: ${itemId}, Old plaid_item_id: ${archivedItem.plaid_item_id}, New: ${plaidItemId}`);
-        
-        // Update the archived item with new credentials and restore to active
-        await executeQuery(
-            `UPDATE items 
-             SET plaid_item_id = @plaidItemId,
-                 access_token = @accessToken,
-                 access_token_key_id = @keyId,
-                 status = 'active',
-                 last_error_code = NULL,
-                 last_error_message = NULL,
-                 last_error_timestamp = NULL,
-                 updated_at = GETDATE()
-             WHERE item_id = @itemId`,
-            {
-                plaidItemId,
-                accessToken: encryptedBuffer,
-                keyId,
-                itemId,
-            }
-        );
-        context.log(`Restored archived item ${itemId} to active status`);
-        
     } else {
-        // Case D: New item - INSERT
+        // Case C & D: New item - INSERT
+        // Note: We no longer restore archived items - they stay archived
+        // This gives a clean separation between old and new connections
         context.log('Inserting new item...');
         const insertResult = await executeQuery<{ item_id: number }>(
             `INSERT INTO items (
                 client_id, plaid_item_id, access_token, access_token_key_id,
-                institution_id, institution_name, status
+                institution_id, institution_name, status, is_oauth
             )
             OUTPUT INSERTED.item_id
             VALUES (
                 @clientId, @plaidItemId, @accessToken, @keyId,
-                @institutionId, @institutionName, 'active'
+                @institutionId, @institutionName, 'active', @isOAuth
             )`,
             {
                 clientId,
@@ -719,10 +706,11 @@ async function handleSessionFinished(
                 keyId,
                 institutionId,
                 institutionName,
+                isOAuth: isOAuth ? 1 : 0,
             }
         );
         itemId = insertResult.recordset[0].item_id;
-        context.log(`Created new item: ${itemId}`);
+        context.log(`Created new item: ${itemId}${isOAuth ? ' (OAuth)' : ''}`);
     }
 
     // Step 6: Fetch and save accounts
@@ -846,7 +834,7 @@ async function handleSessionFinished(
         { linkToken: webhook.link_token }
     );
 
-    context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${itemId}${isDuplicate ? ' (duplicate prevented)' : ''}${isRestored ? ' (archived item restored)' : ''}`);
+    context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${itemId}${isDuplicate ? ' (duplicate prevented)' : ''}${isOAuth ? ' (OAuth)' : ''}`);
 }
 
 /**
