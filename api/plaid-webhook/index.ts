@@ -286,12 +286,6 @@ async function updateItemStatus(
             context.log(`Item ${webhook.item_id} has new accounts available`);
             break;
 
-        case 'PENDING_EXPIRATION':
-            // EU/UK: Consent expiring in 7 days
-            newStatus = 'login_required';
-            context.log(`Item ${webhook.item_id} consent expiring: ${webhook.consent_expiration_time}`);
-            break;
-
         case 'SYNC_UPDATES_AVAILABLE':
             // Transactions are ready to sync
             // Don't change status, just set a flag
