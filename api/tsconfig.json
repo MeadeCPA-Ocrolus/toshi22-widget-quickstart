@@ -22,7 +22,7 @@
   },
   "include": [
     "**/*.ts"
-  ],
+, "ping/index.js"  ],
   "exclude": [
     "node_modules",
     "dist"
