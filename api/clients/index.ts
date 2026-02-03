@@ -129,6 +129,10 @@ const httpTrigger: AzureFunction = async function (
             body: {
                 error: 'Internal server error',
                 message: error instanceof Error ? error.message : 'Unknown error',
+
+                node: process.version,
+                hasDbConnString: Boolean(process.env.SQL_CONNECTION_STRING || process.env.DB_CONNECTION_STRING),
+                
             },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };
