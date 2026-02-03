@@ -59,7 +59,7 @@ jobs:
           api_location: "./api"
           output_location: ""
           skip_app_build: true
-          skip_api_build: true
+          api_build_command: "npm ci && npm run build"
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
