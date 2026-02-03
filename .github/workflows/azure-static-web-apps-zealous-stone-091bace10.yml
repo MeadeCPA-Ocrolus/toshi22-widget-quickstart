@@ -37,6 +37,11 @@ jobs:
         run: |
           cd api
           npm install
+
+      - name: Build API
+        run: |
+          cd api
+          npm run build
       
       - name: Build And Deploy
         id: builddeploy
