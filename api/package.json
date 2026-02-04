@@ -2,7 +2,6 @@
   "name": "meade-cpa-api",
   "version": "1.0.0",
   "description": "Meade CPA API - Azure Functions backend",
-  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
