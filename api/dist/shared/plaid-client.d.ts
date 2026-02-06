@@ -20,6 +20,31 @@ export declare function getPlaidClient(): PlaidApi;
  */
 export declare function getWebhookUrl(): string;
 /**
+ * Response from /user/create endpoint
+ */
+export interface PlaidUserCreateResponse {
+    user_id: string;
+    request_id: string;
+}
+/**
+ * Create a Plaid user for Multi-Item Link
+ *
+ * Per Plaid docs (Dec 10, 2025+), this returns a user_id (e.g., "usr_9nSp2KuZ2x4JDw").
+ * Must be called BEFORE creating multi-item link tokens.
+ * The returned user_id should be stored in the clients.plaid_user_id column.
+ *
+ * NOTE: Calling with the same client_user_id multiple times returns the SAME user_id.
+ *
+ * @param clientUserId - Your internal client ID (e.g., "client-123" or "3")
+ * @returns Plaid user_id (e.g., "usr_9nSp2KuZ2x4JDw")
+ *
+ * @example
+ * const { user_id } = await createPlaidUser('client-123');
+ * // user_id = "usr_9nSp2KuZ2x4JDw"
+ * // Save this to clients.plaid_user_id
+ */
+export declare function createPlaidUser(clientUserId: string): Promise<PlaidUserCreateResponse>;
+/**
  * Options for creating a link token
  */
 export interface CreateLinkTokenOptions {
@@ -31,7 +56,18 @@ export interface CreateLinkTokenOptions {
     email?: string;
     /** Products to request access to */
     products?: Products[];
-    /** URL to redirect to after completion (for Hosted Link) */
+    /**
+     * OAuth redirect URI (TOP LEVEL) - REQUIRED FOR OAUTH BANKS
+     * This is where Plaid redirects DURING the OAuth flow (mid-flow).
+     * Must be registered in Plaid Dashboard under "Allowed redirect URIs".
+     * Different from completionRedirectUri!
+     */
+    redirectUri?: string;
+    /**
+     * URL to redirect to after completion (for Hosted Link)
+     * This is where user goes AFTER the entire Link flow completes (end of flow).
+     * Does NOT need to be registered in Dashboard.
+     */
     completionRedirectUri?: string;
     /** How long the link URL is valid (seconds, max 21600 = 6 hours) */
     urlLifetimeSeconds?: number;
@@ -43,22 +79,38 @@ export interface CreateLinkTokenOptions {
      * Only used when accessToken is also provided (update mode)
      */
     accountSelectionEnabled?: boolean;
+    /**
+     * Plaid user_id from /user/create (required for multi-item)
+     * Format: "usr_9nSp2KuZ2x4JDw"
+     */
+    plaidUserId?: string;
+    /**
+     * Enable multi-item link (allows connecting multiple banks in one session)
+     * Only used for NEW links, not update mode
+     * Requires plaidUserId to be set
+     * Default: true if plaidUserId is provided and not update mode
+     */
+    enableMultiItemLink?: boolean;
 }
 /**
  * Create a Plaid Link token for Hosted Link flow
+ *
+ * UPDATED FOR MULTI-ITEM:
+ * - NEW LINKS: Multi-item enabled if plaidUserId provided (client can connect multiple banks)
+ * - UPDATE MODE: Single-item only (multi-item not supported for re-auth)
  *
  * @param options - Link token configuration
  * @returns Promise<LinkTokenCreateResponse> - Contains link_token and hosted_link_url
  *
  * @example
- * // New link (initial connection)
+ * // New link with multi-item enabled (client can connect multiple banks)
  * const response = await createLinkToken({
  *   clientUserId: 'client-123',
- *   phoneNumber: '+15551234567',
- *   products: [Products.Transactions],
+ *   plaidUserId: 'usr_9nSp2KuZ2x4JDw',  // From createPlaidUser()
+ *   email: 'client@example.com',
  * });
  *
- * // Update mode (re-authentication)
+ * // Update mode (re-authentication) - single item only
  * const response = await createLinkToken({
  *   clientUserId: 'client-123',
  *   accessToken: decryptedAccessToken,

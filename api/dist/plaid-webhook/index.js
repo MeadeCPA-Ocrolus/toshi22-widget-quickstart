@@ -3,7 +3,8 @@
  * Plaid Webhook Handler
  *
  * Receives webhooks from Plaid and processes them:
- * - SESSION_FINISHED: Exchange token, save item + accounts (with duplicate prevention)
+ * - SESSION_FINISHED: Exchange token(s), save item(s) + accounts (with duplicate prevention)
+ *   - SUPPORTS MULTI-ITEM: Loops through public_tokens[] array
  * - ITEM webhooks: Update item status (including ERROR with ITEM_LOGIN_REQUIRED)
  * - TRANSACTIONS webhooks: Set sync flag
  * - USER_ACCOUNT_REVOKED: Mark specific account as inactive
@@ -241,15 +242,302 @@ async function handleAccountRevoked(context, webhook) {
     context.log(`Marked account ${webhook.account_id} as inactive`);
 }
 /**
+ * Process a SINGLE public token → create/update item + accounts
+ *
+ * This is extracted from handleSessionFinished so it can be called
+ * in a loop for multi-item sessions.
+ *
+ * Contains ALL the original logic:
+ * - Duplicate prevention (same plaid_item_id OR same client+institution)
+ * - Archived item validation
+ * - Institution mismatch validation
+ * - Remove old Plaid item on duplicate
+ * - OAuth institution detection
+ * - Account upsert with inactive marking
+ *
+ * @param context - Azure context for logging
+ * @param publicToken - The public token to exchange
+ * @param clientId - The client ID from link_token lookup
+ * @param tokenIndex - Index in the array (for logging, 0-based)
+ * @param totalTokens - Total tokens being processed (for logging)
+ * @returns Object with item_id, plaid_item_id, institutionName, isDuplicate
+ */
+async function processSinglePublicToken(context, publicToken, clientId, tokenIndex, totalTokens) {
+    // Log prefix for multi-item sessions
+    const logPrefix = totalTokens > 1 ? `[Token ${tokenIndex + 1}/${totalTokens}] ` : '';
+    // Step 1: Exchange public_token → access_token
+    context.log(`${logPrefix}Exchanging public_token for access_token...`);
+    const exchangeResult = await (0, plaid_client_1.exchangePublicToken)(publicToken);
+    const accessToken = exchangeResult.access_token;
+    const plaidItemId = exchangeResult.item_id;
+    context.log(`${logPrefix}Got access_token and item_id: ${plaidItemId}`);
+    // Step 2: Get item details (institution name, etc.)
+    context.log(`${logPrefix}Fetching item details...`);
+    const itemDetails = await (0, plaid_client_1.getItem)(accessToken);
+    const institutionId = itemDetails.item.institution_id || null;
+    // Note: institution_name is on the item object but TypeScript types are incomplete
+    const institutionName = itemDetails.item.institution_name || null;
+    context.log(`${logPrefix}Institution: ${institutionName} (${institutionId})`);
+    // Determine if this is an OAuth institution
+    const isOAuth = isOAuthInstitution(institutionId);
+    if (isOAuth) {
+        context.log(`${logPrefix}Institution ${institutionId} uses OAuth flow`);
+    }
+    // Step 3: Encrypt access_token
+    context.log(`${logPrefix}Encrypting access_token...`);
+    const { encryptedBuffer, keyId } = await (0, encryption_1.encrypt)(accessToken);
+    // Step 4: Check for existing item - DUPLICATE PREVENTION
+    // 
+    // Per Plaid docs (https://plaid.com/docs/link/duplicate-items/):
+    // "A duplicate Item will be created if the end user logs into the same 
+    // institution using the same credentials again using Plaid Link"
+    //
+    // Detection methods (in order of priority):
+    // A. Same plaid_item_id = UPDATE MODE (user re-authenticated existing Item)
+    // B. Same client + institution_id (active) = DUPLICATE (user linked same bank again)
+    // C. Same client + institution_id (archived) = NEW ITEM (don't restore archived)
+    // D. Neither = NEW ITEM
+    //
+    // Note: Plaid docs also suggest comparing account mask/name, but institution_id
+    // is sufficient for our use case since we want to prevent ANY duplicate at same bank.
+    // This is more conservative but prevents all billing duplicates.
+    //
+    // Special handling for Chase/PNC/NFCU/Schwab:
+    // Per Plaid docs, at these institutions, creating a duplicate Item may invalidate
+    // the old Item. We handle this by updating the existing item with the new credentials.
+    const existingItemByPlaidId = await (0, database_1.executeQuery)(`SELECT item_id, status, institution_id FROM items WHERE plaid_item_id = @plaidItemId`, { plaidItemId });
+    // Check for same client + institution (active items - duplicate prevention)
+    const existingActiveItemByInstitution = await (0, database_1.executeQuery)(`SELECT item_id, plaid_item_id FROM items 
+         WHERE client_id = @clientId 
+           AND institution_id = @institutionId 
+           AND status != 'archived'
+           AND plaid_item_id != @plaidItemId`, { clientId, institutionId, plaidItemId });
+    let itemId;
+    let isDuplicate = false;
+    if (existingItemByPlaidId.recordset.length > 0) {
+        // Case A: Same plaid_item_id - this is UPDATE MODE
+        // User went through Link to re-authenticate or update accounts
+        const existingItem = existingItemByPlaidId.recordset[0];
+        // VALIDATION 1: Reject update mode on archived items
+        // Archived means user revoked permissions or CPA intentionally removed
+        // Should require fresh new link, not update mode
+        if (existingItem.status === 'archived') {
+            context.log.error(`${logPrefix}REJECTED: Update mode attempted on archived item ${existingItem.item_id}`);
+            context.log.error(`${logPrefix}Archived items cannot be updated - CPA should create a new link instead`);
+            throw new Error('Cannot update archived item. Please create a new link for this client.');
+        }
+        // VALIDATION 2: Reject if institution changed during update mode
+        // This shouldn't happen but indicates something is wrong
+        if (existingItem.institution_id && institutionId && existingItem.institution_id !== institutionId) {
+            context.log.error(`${logPrefix}REJECTED: Institution mismatch during update mode`);
+            context.log.error(`${logPrefix}Expected institution: ${existingItem.institution_id}, Got: ${institutionId}`);
+            context.log.error(`${logPrefix}This indicates a potential security issue or data corruption`);
+            throw new Error(`Institution mismatch during update mode. Expected ${existingItem.institution_id}, got ${institutionId}. Please investigate.`);
+        }
+        itemId = existingItem.item_id;
+        context.log(`${logPrefix}Update mode: Updating existing item ${itemId}`);
+        await (0, database_1.executeQuery)(`UPDATE items 
+             SET access_token = @accessToken,
+                 access_token_key_id = @keyId,
+                 status = 'active',
+                 is_oauth = @isOAuth,
+                 last_error_code = NULL,
+                 last_error_message = NULL,
+                 last_error_timestamp = NULL,
+                 updated_at = GETDATE()
+             WHERE item_id = @itemId`, {
+            accessToken: encryptedBuffer,
+            keyId,
+            isOAuth: isOAuth ? 1 : 0,
+            itemId,
+        });
+        context.log(`${logPrefix}Updated item ${itemId} - cleared errors, set status to active`);
+    }
+    else if (existingActiveItemByInstitution.recordset.length > 0) {
+        // Case B: DUPLICATE PREVENTION
+        // Same client already has an active item at this institution
+        // This can happen if user goes through Link again for the same bank
+        // 
+        // Per Plaid docs: We should NOT create a new item, but update the existing one
+        // The old plaid_item_id may become invalid, so we update to the new one
+        //
+        // For Chase/PNC/NFCU/Schwab: The old Item is automatically invalidated
+        // For other institutions: We should call /item/remove on the old Item
+        const existingItem = existingActiveItemByInstitution.recordset[0];
+        itemId = existingItem.item_id;
+        isDuplicate = true;
+        context.log(`${logPrefix}DUPLICATE PREVENTION: Client ${clientId} already has item ${itemId} at ${institutionName}`);
+        context.log(`${logPrefix}Old plaid_item_id: ${existingItem.plaid_item_id}, New: ${plaidItemId}`);
+        // Try to remove the OLD item from Plaid (best effort - may already be invalid)
+        // This prevents "ghost" items on Plaid's side
+        try {
+            const oldItemResult = await (0, database_1.executeQuery)(`SELECT access_token, access_token_key_id FROM items WHERE item_id = @itemId`, { itemId });
+            if (oldItemResult.recordset.length > 0) {
+                const oldAccessToken = await (0, encryption_1.decrypt)(oldItemResult.recordset[0].access_token, oldItemResult.recordset[0].access_token_key_id);
+                const plaidClient = (0, plaid_client_1.getPlaidClient)();
+                await plaidClient.itemRemove({ access_token: oldAccessToken });
+                context.log(`${logPrefix}Removed old Plaid item: ${existingItem.plaid_item_id}`);
+            }
+        }
+        catch (removeErr) {
+            // Expected to fail if item already invalid (e.g., Chase/PNC auto-invalidation)
+            context.log.warn(`${logPrefix}Could not remove old Plaid item (may already be invalid): ${removeErr}`);
+        }
+        // Update the existing item with the new plaid_item_id and access_token
+        // The old access_token is now invalid per Plaid docs for Chase/PNC/etc
+        await (0, database_1.executeQuery)(`UPDATE items 
+             SET plaid_item_id = @plaidItemId,
+                 access_token = @accessToken,
+                 access_token_key_id = @keyId,
+                 status = 'active',
+                 is_oauth = @isOAuth,
+                 last_error_code = NULL,
+                 last_error_message = NULL,
+                 last_error_timestamp = NULL,
+                 updated_at = GETDATE()
+             WHERE item_id = @itemId`, {
+            plaidItemId,
+            accessToken: encryptedBuffer,
+            keyId,
+            isOAuth: isOAuth ? 1 : 0,
+            itemId,
+        });
+        context.log(`${logPrefix}Updated existing item ${itemId} with new plaid_item_id (duplicate prevention)`);
+    }
+    else {
+        // Case C & D: New item - INSERT
+        // Note: We no longer restore archived items - they stay archived
+        // This gives a clean separation between old and new connections
+        context.log(`${logPrefix}Inserting new item...`);
+        const insertResult = await (0, database_1.executeQuery)(`INSERT INTO items (
+                client_id, plaid_item_id, access_token, access_token_key_id,
+                institution_id, institution_name, status, is_oauth
+            )
+            OUTPUT INSERTED.item_id
+            VALUES (
+                @clientId, @plaidItemId, @accessToken, @keyId,
+                @institutionId, @institutionName, 'active', @isOAuth
+            )`, {
+            clientId,
+            plaidItemId,
+            accessToken: encryptedBuffer,
+            keyId,
+            institutionId,
+            institutionName,
+            isOAuth: isOAuth ? 1 : 0,
+        });
+        itemId = insertResult.recordset[0].item_id;
+        context.log(`${logPrefix}Created new item: ${itemId}${isOAuth ? ' (OAuth)' : ''}`);
+    }
+    // Step 5: Fetch and save accounts
+    // 
+    // ACCOUNT HANDLING LOGIC:
+    // - If plaid_account_id exists → update that account (same Plaid session/update mode)
+    // - Otherwise → create NEW account
+    // - Mark any accounts for this item NOT in Plaid response as inactive
+    // 
+    // This means:
+    // - Deselected accounts stay inactive with their history preserved
+    // - Re-selected accounts become NEW records (fresh start)
+    // - Old inactive accounts are never overwritten
+    context.log(`${logPrefix}Fetching accounts from Plaid...`);
+    const accountsResult = await (0, plaid_client_1.getAccounts)(accessToken);
+    // Track which plaid_account_ids we've processed (for Step 6)
+    const processedPlaidAccountIds = [];
+    for (const account of accountsResult.accounts) {
+        const mask = account.mask || null;
+        // Check if this exact plaid_account_id already exists
+        const existingAccount = await (0, database_1.executeQuery)(`SELECT account_id FROM accounts WHERE plaid_account_id = @plaidAccountId`, { plaidAccountId: account.account_id });
+        if (existingAccount.recordset.length > 0) {
+            // Exact plaid_account_id match - update existing account
+            const accountId = existingAccount.recordset[0].account_id;
+            await (0, database_1.executeQuery)(`UPDATE accounts 
+                 SET account_name = @accountName,
+                     official_name = @officialName,
+                     current_balance = @currentBalance,
+                     available_balance = @availableBalance,
+                     credit_limit = @creditLimit,
+                     mask = @mask,
+                     is_active = 1,
+                     last_updated_datetime = GETDATE(),
+                     updated_at = GETDATE()
+                 WHERE account_id = @accountId`, {
+                accountName: account.name,
+                officialName: account.official_name,
+                currentBalance: account.balances.current,
+                availableBalance: account.balances.available,
+                creditLimit: account.balances.limit,
+                mask,
+                accountId,
+            });
+            context.log(`${logPrefix}Updated existing account: ${account.name} (${account.account_id})`);
+        }
+        else {
+            // No match - create new account
+            // This happens for:
+            // - Brand new accounts
+            // - Re-selected accounts that were previously deselected (new plaid_account_id)
+            await (0, database_1.executeQuery)(`INSERT INTO accounts (
+                    item_id, plaid_account_id, account_name, official_name,
+                    account_type, account_subtype, mask,
+                    current_balance, available_balance, credit_limit,
+                    is_active, last_updated_datetime
+                )
+                VALUES (
+                    @itemId, @plaidAccountId, @accountName, @officialName,
+                    @accountType, @accountSubtype, @mask,
+                    @currentBalance, @availableBalance, @creditLimit,
+                    1, GETDATE()
+                )`, {
+                itemId,
+                plaidAccountId: account.account_id,
+                accountName: account.name,
+                officialName: account.official_name,
+                accountType: account.type,
+                accountSubtype: account.subtype,
+                mask,
+                currentBalance: account.balances.current,
+                availableBalance: account.balances.available,
+                creditLimit: account.balances.limit,
+            });
+            context.log(`${logPrefix}Created new account: ${account.name} (mask: ${mask})`);
+        }
+        processedPlaidAccountIds.push(account.account_id);
+    }
+    // Step 6: Mark accounts NOT in Plaid response as inactive
+    // These are accounts the user deselected or that no longer exist at the bank
+    if (processedPlaidAccountIds.length > 0) {
+        // Build parameterized list for IN clause
+        const placeholders = processedPlaidAccountIds.map((_, i) => `@id${i}`).join(',');
+        const params = { itemId };
+        processedPlaidAccountIds.forEach((id, i) => {
+            params[`id${i}`] = id;
+        });
+        await (0, database_1.executeQuery)(`UPDATE accounts 
+             SET is_active = 0, updated_at = GETDATE()
+             WHERE item_id = @itemId 
+               AND plaid_account_id NOT IN (${placeholders})
+               AND is_active = 1`, params);
+        context.log(`${logPrefix}Marked deselected accounts as inactive for item ${itemId}`);
+    }
+    return { itemId, plaidItemId, institutionName, isDuplicate, isOAuth };
+}
+/**
  * Handle SESSION_FINISHED webhook - the main flow!
  *
  * This fires when a client completes the Plaid Link flow (initial or update mode).
  *
- * Key logic:
- * 1. Checking if same plaid_item_id exists (update mode)
- * 2. Checking if same client + institution exists (duplicate prevention)
- * 3. Creating or updating item
- * 4. Fetching and saving accounts
+ * MULTI-ITEM SUPPORT:
+ * - For single-item sessions: public_token is a string
+ * - For multi-item sessions: public_tokens is an ARRAY
+ *
+ * This handler processes ALL tokens in the array, creating multiple items.
+ *
+ * Key logic (preserved from original):
+ * 1. Session tracking (link_sessions table, attempt_count)
+ * 2. Non-success status handling with detailed logging
+ * 3. Duplicate prevention
+ * 4. Account upsert with inactive marking
  */
 async function handleSessionFinished(context, webhook) {
     context.log('SESSION_FINISHED webhook received');
@@ -356,10 +644,26 @@ async function handleSessionFinished(context, webhook) {
     }
     // SUCCESS flow continues below...
     context.log('Processing successful Link completion');
-    // Get public_token - can be in public_token or public_tokens array
-    const publicToken = webhook.public_token || webhook.public_tokens?.[0];
-    if (!publicToken) {
-        context.log.warn('SESSION_FINISHED SUCCESS but missing public_token');
+    // ============================================================
+    // MULTI-ITEM SUPPORT: Get ALL public tokens
+    // ============================================================
+    // Per Plaid docs, multi-item sessions return public_tokens[] array
+    // Single-item sessions may use public_token (string) for backwards compat
+    // We handle both cases here
+    // ============================================================
+    let publicTokens = [];
+    if (webhook.public_tokens && webhook.public_tokens.length > 0) {
+        // Multi-item: array of tokens
+        publicTokens = webhook.public_tokens;
+        context.log(`MULTI-ITEM SESSION: Received ${publicTokens.length} public tokens`);
+    }
+    else if (webhook.public_token) {
+        // Single-item: single token (backwards compatibility)
+        publicTokens = [webhook.public_token];
+        context.log(`SINGLE-ITEM SESSION: Received 1 public token`);
+    }
+    else {
+        context.log.warn('SESSION_FINISHED SUCCESS but missing public_token(s)');
         return;
     }
     // Check if already processed
@@ -368,266 +672,62 @@ async function handleSessionFinished(context, webhook) {
         return;
     }
     context.log(`Found client_id: ${clientId} for link_token`);
-    // Step 2: Exchange public_token → access_token
-    context.log('Exchanging public_token for access_token...');
-    const exchangeResult = await (0, plaid_client_1.exchangePublicToken)(publicToken);
-    const accessToken = exchangeResult.access_token;
-    const plaidItemId = exchangeResult.item_id;
-    context.log(`Got access_token and item_id: ${plaidItemId}`);
-    // Step 3: Get item details (institution name, etc.)
-    context.log('Fetching item details...');
-    const itemDetails = await (0, plaid_client_1.getItem)(accessToken);
-    const institutionId = itemDetails.item.institution_id || null;
-    // Note: institution_name is on the item object but TypeScript types are incomplete
-    const institutionName = itemDetails.item.institution_name || null;
-    context.log(`Institution: ${institutionName} (${institutionId})`);
-    // Determine if this is an OAuth institution
-    const isOAuth = isOAuthInstitution(institutionId);
-    if (isOAuth) {
-        context.log(`Institution ${institutionId} uses OAuth flow`);
-    }
-    // Step 4: Encrypt access_token
-    context.log('Encrypting access_token...');
-    const { encryptedBuffer, keyId } = await (0, encryption_1.encrypt)(accessToken);
-    // Step 5: Check for existing item - DUPLICATE PREVENTION
-    // 
-    // Per Plaid docs (https://plaid.com/docs/link/duplicate-items/):
-    // "A duplicate Item will be created if the end user logs into the same 
-    // institution using the same credentials again using Plaid Link"
-    //
-    // Detection methods (in order of priority):
-    // A. Same plaid_item_id = UPDATE MODE (user re-authenticated existing Item)
-    // B. Same client + institution_id (active) = DUPLICATE (user linked same bank again)
-    // C. Same client + institution_id (archived) = NEW ITEM (don't restore archived)
-    // D. Neither = NEW ITEM
-    //
-    // Note: Plaid docs also suggest comparing account mask/name, but institution_id
-    // is sufficient for our use case since we want to prevent ANY duplicate at same bank.
-    // This is more conservative but prevents all billing duplicates.
-    //
-    // Special handling for Chase/PNC/NFCU/Schwab:
-    // Per Plaid docs, at these institutions, creating a duplicate Item may invalidate
-    // the old Item. We handle this by updating the existing item with the new credentials.
-    const existingItemByPlaidId = await (0, database_1.executeQuery)(`SELECT item_id, status, institution_id FROM items WHERE plaid_item_id = @plaidItemId`, { plaidItemId });
-    // Check for same client + institution (active items - duplicate prevention)
-    const existingActiveItemByInstitution = await (0, database_1.executeQuery)(`SELECT item_id, plaid_item_id FROM items 
-         WHERE client_id = @clientId 
-           AND institution_id = @institutionId 
-           AND status != 'archived'
-           AND plaid_item_id != @plaidItemId`, { clientId, institutionId, plaidItemId });
-    let itemId;
-    let isDuplicate = false;
-    if (existingItemByPlaidId.recordset.length > 0) {
-        // Case A: Same plaid_item_id - this is UPDATE MODE
-        // User went through Link to re-authenticate or update accounts
-        const existingItem = existingItemByPlaidId.recordset[0];
-        // VALIDATION 1: Reject update mode on archived items
-        // Archived means user revoked permissions or CPA intentionally removed
-        // Should require fresh new link, not update mode
-        if (existingItem.status === 'archived') {
-            context.log.error(`REJECTED: Update mode attempted on archived item ${existingItem.item_id}`);
-            context.log.error(`Archived items cannot be updated - CPA should create a new link instead`);
-            throw new Error('Cannot update archived item. Please create a new link for this client.');
-        }
-        // VALIDATION 2: Reject if institution changed during update mode
-        // This shouldn't happen but indicates something is wrong
-        if (existingItem.institution_id && institutionId && existingItem.institution_id !== institutionId) {
-            context.log.error(`REJECTED: Institution mismatch during update mode`);
-            context.log.error(`Expected institution: ${existingItem.institution_id}, Got: ${institutionId}`);
-            context.log.error(`This indicates a potential security issue or data corruption`);
-            throw new Error(`Institution mismatch during update mode. Expected ${existingItem.institution_id}, got ${institutionId}. Please investigate.`);
-        }
-        itemId = existingItem.item_id;
-        context.log(`Update mode: Updating existing item ${itemId}`);
-        await (0, database_1.executeQuery)(`UPDATE items 
-             SET access_token = @accessToken,
-                 access_token_key_id = @keyId,
-                 status = 'active',
-                 is_oauth = @isOAuth,
-                 last_error_code = NULL,
-                 last_error_message = NULL,
-                 last_error_timestamp = NULL,
-                 updated_at = GETDATE()
-             WHERE item_id = @itemId`, {
-            accessToken: encryptedBuffer,
-            keyId,
-            isOAuth: isOAuth ? 1 : 0,
-            itemId,
-        });
-        context.log(`Updated item ${itemId} - cleared errors, set status to active`);
-    }
-    else if (existingActiveItemByInstitution.recordset.length > 0) {
-        // Case B: DUPLICATE PREVENTION
-        // Same client already has an active item at this institution
-        // This can happen if user goes through Link again for the same bank
-        // 
-        // Per Plaid docs: We should NOT create a new item, but update the existing one
-        // The old plaid_item_id may become invalid, so we update to the new one
-        //
-        // For Chase/PNC/NFCU/Schwab: The old Item is automatically invalidated
-        // For other institutions: We should call /item/remove on the old Item
-        const existingItem = existingActiveItemByInstitution.recordset[0];
-        itemId = existingItem.item_id;
-        isDuplicate = true;
-        context.log(`DUPLICATE PREVENTION: Client ${clientId} already has item ${itemId} at ${institutionName}`);
-        context.log(`Old plaid_item_id: ${existingItem.plaid_item_id}, New: ${plaidItemId}`);
-        // Try to remove the OLD item from Plaid (best effort - may already be invalid)
-        // This prevents "ghost" items on Plaid's side
+    // ============================================================
+    // PROCESS ALL TOKENS (the key multi-item logic!)
+    // ============================================================
+    const results = [];
+    for (let i = 0; i < publicTokens.length; i++) {
+        const publicToken = publicTokens[i];
         try {
-            const oldItemResult = await (0, database_1.executeQuery)(`SELECT access_token, access_token_key_id FROM items WHERE item_id = @itemId`, { itemId });
-            if (oldItemResult.recordset.length > 0) {
-                const oldAccessToken = await (0, encryption_1.decrypt)(oldItemResult.recordset[0].access_token, oldItemResult.recordset[0].access_token_key_id);
-                const plaidClient = (0, plaid_client_1.getPlaidClient)();
-                await plaidClient.itemRemove({ access_token: oldAccessToken });
-                context.log(`Removed old Plaid item: ${existingItem.plaid_item_id}`);
+            if (publicTokens.length > 1) {
+                context.log(`\n--- Processing token ${i + 1} of ${publicTokens.length} ---`);
             }
-        }
-        catch (removeErr) {
-            // Expected to fail if item already invalid (e.g., Chase/PNC auto-invalidation)
-            context.log.warn(`Could not remove old Plaid item (may already be invalid): ${removeErr}`);
-        }
-        // Update the existing item with the new plaid_item_id and access_token
-        // The old access_token is now invalid per Plaid docs for Chase/PNC/etc
-        await (0, database_1.executeQuery)(`UPDATE items 
-             SET plaid_item_id = @plaidItemId,
-                 access_token = @accessToken,
-                 access_token_key_id = @keyId,
-                 status = 'active',
-                 is_oauth = @isOAuth,
-                 last_error_code = NULL,
-                 last_error_message = NULL,
-                 last_error_timestamp = NULL,
-                 updated_at = GETDATE()
-             WHERE item_id = @itemId`, {
-            plaidItemId,
-            accessToken: encryptedBuffer,
-            keyId,
-            isOAuth: isOAuth ? 1 : 0,
-            itemId,
-        });
-        context.log(`Updated existing item ${itemId} with new plaid_item_id (duplicate prevention)`);
-    }
-    else {
-        // Case C & D: New item - INSERT
-        // Note: We no longer restore archived items - they stay archived
-        // This gives a clean separation between old and new connections
-        context.log('Inserting new item...');
-        const insertResult = await (0, database_1.executeQuery)(`INSERT INTO items (
-                client_id, plaid_item_id, access_token, access_token_key_id,
-                institution_id, institution_name, status, is_oauth
-            )
-            OUTPUT INSERTED.item_id
-            VALUES (
-                @clientId, @plaidItemId, @accessToken, @keyId,
-                @institutionId, @institutionName, 'active', @isOAuth
-            )`, {
-            clientId,
-            plaidItemId,
-            accessToken: encryptedBuffer,
-            keyId,
-            institutionId,
-            institutionName,
-            isOAuth: isOAuth ? 1 : 0,
-        });
-        itemId = insertResult.recordset[0].item_id;
-        context.log(`Created new item: ${itemId}${isOAuth ? ' (OAuth)' : ''}`);
-    }
-    // Step 6: Fetch and save accounts
-    // 
-    // ACCOUNT HANDLING LOGIC:
-    // - If plaid_account_id exists → update that account (same Plaid session/update mode)
-    // - Otherwise → create NEW account
-    // - Mark any accounts for this item NOT in Plaid response as inactive
-    // 
-    // This means:
-    // - Deselected accounts stay inactive with their history preserved
-    // - Re-selected accounts become NEW records (fresh start)
-    // - Old inactive accounts are never overwritten
-    context.log('Fetching accounts from Plaid...');
-    const accountsResult = await (0, plaid_client_1.getAccounts)(accessToken);
-    // Track which plaid_account_ids we've processed (for Step 7)
-    const processedPlaidAccountIds = [];
-    for (const account of accountsResult.accounts) {
-        const mask = account.mask || null;
-        // Check if this exact plaid_account_id already exists
-        const existingAccount = await (0, database_1.executeQuery)(`SELECT account_id FROM accounts WHERE plaid_account_id = @plaidAccountId`, { plaidAccountId: account.account_id });
-        if (existingAccount.recordset.length > 0) {
-            // Exact plaid_account_id match - update existing account
-            const accountId = existingAccount.recordset[0].account_id;
-            await (0, database_1.executeQuery)(`UPDATE accounts 
-                 SET account_name = @accountName,
-                     official_name = @officialName,
-                     current_balance = @currentBalance,
-                     available_balance = @availableBalance,
-                     credit_limit = @creditLimit,
-                     mask = @mask,
-                     is_active = 1,
-                     last_updated_datetime = GETDATE(),
-                     updated_at = GETDATE()
-                 WHERE account_id = @accountId`, {
-                accountName: account.name,
-                officialName: account.official_name,
-                currentBalance: account.balances.current,
-                availableBalance: account.balances.available,
-                creditLimit: account.balances.limit,
-                mask,
-                accountId,
+            const result = await processSinglePublicToken(context, publicToken, clientId, i, publicTokens.length);
+            results.push({
+                ...result,
+                success: true,
             });
-            context.log(`Updated existing account: ${account.name} (${account.account_id})`);
         }
-        else {
-            // No match - create new account
-            // This happens for:
-            // - Brand new accounts
-            // - Re-selected accounts that were previously deselected (new plaid_account_id)
-            await (0, database_1.executeQuery)(`INSERT INTO accounts (
-                    item_id, plaid_account_id, account_name, official_name,
-                    account_type, account_subtype, mask,
-                    current_balance, available_balance, credit_limit,
-                    is_active, last_updated_datetime
-                )
-                VALUES (
-                    @itemId, @plaidAccountId, @accountName, @officialName,
-                    @accountType, @accountSubtype, @mask,
-                    @currentBalance, @availableBalance, @creditLimit,
-                    1, GETDATE()
-                )`, {
-                itemId,
-                plaidAccountId: account.account_id,
-                accountName: account.name,
-                officialName: account.official_name,
-                accountType: account.type,
-                accountSubtype: account.subtype,
-                mask,
-                currentBalance: account.balances.current,
-                availableBalance: account.balances.available,
-                creditLimit: account.balances.limit,
+        catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            context.log.error(`Error processing token ${i + 1}: ${errorMsg}`);
+            results.push({
+                itemId: 0,
+                plaidItemId: '',
+                institutionName: null,
+                isDuplicate: false,
+                isOAuth: false,
+                success: false,
+                error: errorMsg,
             });
-            context.log(`Created new account: ${account.name} (mask: ${mask})`);
+            // Continue processing other tokens even if one fails
         }
-        processedPlaidAccountIds.push(account.account_id);
     }
-    // Step 7: Mark accounts NOT in Plaid response as inactive
-    // These are accounts the user deselected or that no longer exist at the bank
-    if (processedPlaidAccountIds.length > 0) {
-        // Build parameterized list for IN clause
-        const placeholders = processedPlaidAccountIds.map((_, i) => `@id${i}`).join(',');
-        const params = { itemId };
-        processedPlaidAccountIds.forEach((id, i) => {
-            params[`id${i}`] = id;
-        });
-        await (0, database_1.executeQuery)(`UPDATE accounts 
-             SET is_active = 0, updated_at = GETDATE()
-             WHERE item_id = @itemId 
-               AND plaid_account_id NOT IN (${placeholders})
-               AND is_active = 1`, params);
-        context.log(`Marked deselected accounts as inactive for item ${itemId}`);
-    }
-    // Step 8: Mark link_token as used
+    // Step 7: Mark link_token as used
     await (0, database_1.executeQuery)(`UPDATE link_tokens 
          SET status = 'used', used_at = GETDATE()
          WHERE link_token = @linkToken`, { linkToken: webhook.link_token });
-    context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${itemId}${isDuplicate ? ' (duplicate prevented)' : ''}${isOAuth ? ' (OAuth)' : ''}`);
+    // Log summary
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    if (publicTokens.length > 1) {
+        context.log(`\n========================================`);
+        context.log(`MULTI-ITEM SESSION COMPLETE: ${successCount} succeeded, ${failCount} failed`);
+        context.log(`========================================`);
+        for (const result of results) {
+            if (result.success) {
+                context.log(`✓ Item ${result.itemId}: ${result.institutionName || 'Unknown'} (${result.plaidItemId})${result.isDuplicate ? ' [duplicate prevented]' : ''}${result.isOAuth ? ' (OAuth)' : ''}`);
+            }
+            else {
+                context.log(`✗ Failed: ${result.error}`);
+            }
+        }
+    }
+    else if (results.length > 0 && results[0].success) {
+        // Single item - use original log format
+        const result = results[0];
+        context.log(`SESSION_FINISHED processing complete for client ${clientId}, item ${result.itemId}${result.isDuplicate ? ' (duplicate prevented)' : ''}${result.isOAuth ? ' (OAuth)' : ''}`);
+    }
 }
 /**
  * Mark webhook as processed

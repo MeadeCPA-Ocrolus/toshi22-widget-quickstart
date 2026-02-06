@@ -14,6 +14,8 @@ import { professionalTheme } from './theme';
 import ParticlesBackground from './Components/ParticlesBackground';
 import DocumentUploadPage from './pages/DocumentUploadPage';
 import { PlaidDashboard } from './pages/PlaidDashboard';
+import LinkComplete from './pages/LinkComplete';
+
 import './App.css';
 
 interface UserInfo { userId: string; userDetails: string; userRoles: string[]; claims: any[]; }
@@ -57,6 +59,22 @@ function App() {
     useEffect(() => { checkAuthStatus(); }, []);
 
     const checkAuthStatus = async () => {
+        // DEV MODE: Bypass auth for local testing
+        const LOCAL_DEV_MODE = false; // <-- Set to false before deploying!
+        
+        if (LOCAL_DEV_MODE) {
+            setUserInfo({
+                userId: 'local-dev-user',
+                userDetails: 'local.developer@meade-cpa.com',
+                userRoles: ['authenticated'],
+                claims: [],
+            });
+            setIsAuthenticated(true);
+            setIsLoading(false);
+            return;
+        }
+        
+        // Production auth check
         try {
             const response = await fetch('/.auth/me');
             if (response.ok) {
@@ -77,6 +95,15 @@ function App() {
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
                     <Typography variant="h6">Loading...</Typography>
                 </Box>
+            </ThemeProvider>
+        );
+    }
+
+    if (window.location.pathname === '/bank/link-complete') {
+        return (
+            <ThemeProvider theme={professionalTheme}>
+                <CssBaseline />
+                <LinkComplete />
             </ThemeProvider>
         );
     }
