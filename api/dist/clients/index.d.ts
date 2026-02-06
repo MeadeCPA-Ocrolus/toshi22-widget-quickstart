@@ -5,7 +5,7 @@
  * GET /api/clients/:id - Get single client
  * POST /api/clients - Create new client
  * PUT /api/clients/:id - Update client
- * DELETE /api/clients/:id - Delete client (with cascade)
+ * DELETE /api/clients/:id - Delete client (with cascade) - NOW SOFT DELETE
  *
  * Query Parameters for GET /api/clients:
  * - search: Search by name, email, or business name (case-insensitive)

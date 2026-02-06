@@ -2,7 +2,7 @@
  * Items Endpoint
  * 
  * GET /api/items/:id - Get single item with accounts
- * DELETE /api/items/:id - Remove item and all related data (with optional Plaid removal)
+ * DELETE /api/items/:id - Remove item and all related data (with optional Plaid removal) - NOW SOFT DELETE
  * 
  * Note: Listing items by client is handled by /api/clients/:clientId/items
  * This endpoint is for operations on individual items.
@@ -34,6 +34,7 @@ interface ItemRecord {
     transactions_last_successful_update: string | null;
     created_at: string;
     updated_at: string;
+    is_archived: boolean;
 }
 
 /**
@@ -72,6 +73,7 @@ interface ItemWithAccounts {
     transactions_last_successful_update: string | null;
     created_at: string;
     updated_at: string;
+    is_archived: boolean;
     accounts: AccountRecord[];
 }
 
@@ -160,7 +162,7 @@ const httpTrigger: AzureFunction = async function (
 async function getItem(context: Context, itemId: number): Promise<void> {
     context.log(`Getting item: ${itemId}`);
 
-    // Fetch item (excluding access_token for security)
+    // Fetch item (excluding access_token for security, only non-archived)
     const itemResult = await executeQuery<Omit<ItemRecord, 'access_token' | 'access_token_key_id'>>(
         `SELECT 
             item_id,
@@ -168,7 +170,7 @@ async function getItem(context: Context, itemId: number): Promise<void> {
             plaid_item_id,
             institution_id,
             institution_name,
-            is_oath,
+            is_oauth,
             status,
             last_error_code,
             last_error_message,
@@ -179,7 +181,7 @@ async function getItem(context: Context, itemId: number): Promise<void> {
             created_at,
             updated_at
         FROM items
-        WHERE item_id = @itemId`,
+        WHERE item_id = @itemId AND is_archived = 0`,
         { itemId }
     );
 
@@ -194,7 +196,7 @@ async function getItem(context: Context, itemId: number): Promise<void> {
 
     const item = itemResult.recordset[0];
 
-    // Fetch accounts for this item
+    // Fetch accounts for this item (only active)
     const accountsResult = await executeQuery<AccountRecord>(
         `SELECT 
             account_id,
@@ -210,7 +212,7 @@ async function getItem(context: Context, itemId: number): Promise<void> {
             is_active,
             last_updated_datetime
         FROM accounts
-        WHERE item_id = @itemId
+        WHERE item_id = @itemId AND is_active = 1
         ORDER BY account_type, account_name`,
         { itemId }
     );
@@ -230,17 +232,19 @@ async function getItem(context: Context, itemId: number): Promise<void> {
 /**
  * Delete item and all related data (cascade delete)
  * 
+ * CHANGED: Now a SOFT DELETE - sets is_archived=1 instead of physical deletion
+ * 
  * Optionally removes the item from Plaid as well (invalidates access token).
  * 
- * WARNING: This permanently deletes:
- * - All transactions for all accounts
- * - All accounts
- * - Webhook logs for this item
- * - The item record
- * - (Optionally) Removes from Plaid
+ * Sets:
+ * - Item: is_archived = 1 (status field remains for link status)
+ * - Accounts: is_active = 0, closed_at = NOW
+ * - Transactions: is_archived = 1 (if table exists)
+ * 
+ * Preserves: webhook_log (for audit trail)
  * 
  * @param context - Azure Function context
- * @param itemId - Item ID to delete
+ * @param itemId - Item ID to delete (archive)
  * @param removeFromPlaid - If true, also call Plaid API to remove the item
  */
 async function deleteItem(
@@ -248,7 +252,7 @@ async function deleteItem(
     itemId: number,
     removeFromPlaid: boolean = false
 ): Promise<void> {
-    context.log(`Deleting item: ${itemId}, removeFromPlaid: ${removeFromPlaid}`);
+    context.log(`Deleting (archiving) item: ${itemId}, removeFromPlaid: ${removeFromPlaid}`);
 
     // Fetch item with access token (needed if removing from Plaid)
     const itemResult = await executeQuery<ItemRecord>(
@@ -261,7 +265,7 @@ async function deleteItem(
             institution_name,
             status
         FROM items
-        WHERE item_id = @itemId`,
+        WHERE item_id = @itemId AND is_archived = 0`,
         { itemId }
     );
 
@@ -275,9 +279,9 @@ async function deleteItem(
     }
 
     const item = itemResult.recordset[0];
-    context.log(`Deleting item: ${item.institution_name} (plaid_item_id: ${item.plaid_item_id})`);
+    context.log(`Archiving item: ${item.institution_name} (plaid_item_id: ${item.plaid_item_id})`);
 
-    // Track what we're deleting
+    // Track what we're archiving
     const deleteCounts = {
         transactions: 0,
         accounts: 0,
@@ -309,57 +313,55 @@ async function deleteItem(
         }
     }
 
-    // Delete in order (respecting foreign key constraints)
+    // SOFT DELETE CASCADE
 
-    // 1. Get account IDs for this item
+    // 1. Archive the item (status field remains unchanged for link status tracking)
+    await executeQuery(
+        `UPDATE items SET is_archived = 1, updated_at = GETDATE() WHERE item_id = @itemId`,
+        { itemId }
+    );
+
+    // 2. Get account IDs for this item
     const accountsResult = await executeQuery<{ account_id: number }>(
-        `SELECT account_id FROM accounts WHERE item_id = @itemId`,
+        `SELECT account_id FROM accounts WHERE item_id = @itemId AND is_active = 1`,
         { itemId }
     );
     const accountIds = accountsResult.recordset.map(a => a.account_id);
+    deleteCounts.accounts = accountIds.length;
 
-    // 2. Delete transactions
+    // 3. Deactivate accounts
     if (accountIds.length > 0) {
-        const txResult = await executeQuery<{ count: number }>(
-            `SELECT COUNT(*) as count FROM transactions 
-             WHERE account_id IN (${accountIds.join(',')})`
-        );
-        deleteCounts.transactions = txResult.recordset[0]?.count || 0;
-
         await executeQuery(
-            `DELETE FROM transactions WHERE account_id IN (${accountIds.join(',')})`
+            `UPDATE accounts SET is_active = 0, closed_at = GETDATE(), updated_at = GETDATE() 
+             WHERE item_id = @itemId AND is_active = 1`,
+            { itemId }
         );
-        context.log(`Deleted ${deleteCounts.transactions} transactions`);
+        context.log(`Deactivated ${deleteCounts.accounts} accounts`);
+
+        // 4. Archive transactions (if table exists)
+        try {
+            const txResult = await executeQuery<{ count: number }>(
+                `SELECT COUNT(*) as count FROM transactions 
+                 WHERE account_id IN (${accountIds.join(',')}) AND is_archived = 0`
+            );
+            deleteCounts.transactions = txResult.recordset[0]?.count || 0;
+
+            if (deleteCounts.transactions > 0) {
+                await executeQuery(
+                    `UPDATE transactions SET is_archived = 1, updated_at = GETDATE() 
+                     WHERE account_id IN (${accountIds.join(',')}) AND is_archived = 0`
+                );
+                context.log(`Archived ${deleteCounts.transactions} transactions`);
+            }
+        } catch (txError) {
+            // Transactions table might not exist yet (Sprint 3)
+            context.log.warn('Could not archive transactions (table may not exist yet)');
+        }
     }
 
-    // 3. Delete accounts
-    deleteCounts.accounts = accountIds.length;
-    await executeQuery(
-        `DELETE FROM accounts WHERE item_id = @itemId`,
-        { itemId }
-    );
-    context.log(`Deleted ${deleteCounts.accounts} accounts`);
+    // NOTE: webhook_log is NOT modified
 
-    // 4. Delete webhook logs
-    const whResult = await executeQuery<{ count: number }>(
-        `SELECT COUNT(*) as count FROM webhook_log WHERE item_id = @itemId`,
-        { itemId }
-    );
-    deleteCounts.webhook_logs = whResult.recordset[0]?.count || 0;
-
-    await executeQuery(
-        `DELETE FROM webhook_log WHERE item_id = @itemId`,
-        { itemId }
-    );
-    context.log(`Deleted ${deleteCounts.webhook_logs} webhook logs`);
-
-    // 5. Delete the item
-    await executeQuery(
-        `DELETE FROM items WHERE item_id = @itemId`,
-        { itemId }
-    );
-
-    context.log(`Item ${itemId} deleted successfully`);
+    context.log(`Item ${itemId} archived successfully`);
 
     context.res = {
         status: 200,

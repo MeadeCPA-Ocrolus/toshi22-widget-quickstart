@@ -22,6 +22,7 @@ export interface Client {
     target_tax_savings_percent: number | null;
     created_at: string;
     updated_at: string;
+    is_archived: boolean;
     item_count?: number;
     items_needing_attention?: number;
 }
@@ -34,7 +35,7 @@ export interface ClientWithAlerts extends Client {
     has_pending_sync: boolean;
 }
 
-export type ItemStatus = 'active' | 'login_required' | 'needs_update' | 'error' | 'archived';
+export type ItemStatus = 'active' | 'login_required' | 'needs_update' | 'error';
 
 export interface Item {
     item_id: number;
@@ -54,6 +55,7 @@ export interface Item {
     has_sync_updates: boolean;
     created_at: string;
     updated_at: string;
+    is_archived: boolean;
 }
 
 export interface ItemWithAccounts extends Item {

@@ -104,7 +104,7 @@ export const ClientDetail: React.FC = () => {
 
             // Filter out archived items, keep accounts as-is (we filter in render)
             const activeItems = response.items
-                .filter((item) => item.status !== 'archived')
+                .filter((item) => !item.is_archived)
                 .map((item) => ({
                     ...item,
                     accounts: item.accounts.filter((acc) => acc.is_active),

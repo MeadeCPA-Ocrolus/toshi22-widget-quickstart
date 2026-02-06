@@ -6,7 +6,7 @@
  * GET /api/clients/:id - Get single client
  * POST /api/clients - Create new client
  * PUT /api/clients/:id - Update client
- * DELETE /api/clients/:id - Delete client (with cascade)
+ * DELETE /api/clients/:id - Delete client (with cascade) - NOW SOFT DELETE
  *
  * Query Parameters for GET /api/clients:
  * - search: Search by name, email, or business name (case-insensitive)
@@ -109,6 +109,8 @@ async function listClients(context, req) {
     // Build dynamic WHERE clause
     const conditions = [];
     const params = {};
+    // SOFT DELETE: Only show non-archived clients
+    conditions.push('c.is_archived = 0');
     // Search filter - searches across name, email, and business name
     if (search) {
         conditions.push(`(
@@ -160,7 +162,7 @@ async function listClients(context, req) {
                     THEN 1 ELSE 0 
                 END) AS items_needing_attention
             FROM items
-            WHERE status != 'archived'
+            WHERE is_archived = 0
             GROUP BY client_id
         ) item_counts ON item_counts.client_id = c.client_id
         ${whereClause}
@@ -221,7 +223,7 @@ async function getClient(context, clientId) {
             created_at,
             updated_at
         FROM clients
-        WHERE client_id = @clientId`, { clientId });
+        WHERE client_id = @clientId AND is_archived = 0`, { clientId });
     if (result.recordset.length === 0) {
         context.res = {
             status: 404,
@@ -265,8 +267,8 @@ async function createClient(context, body) {
         };
         return;
     }
-    // Check for duplicate email
-    const existingResult = await (0, database_1.executeQuery)(`SELECT client_id FROM clients WHERE email = @email`, { email: body.email.toLowerCase().trim() });
+    // Check for duplicate email (only among non-archived)
+    const existingResult = await (0, database_1.executeQuery)(`SELECT client_id FROM clients WHERE email = @email AND is_archived = 0`, { email: body.email.toLowerCase().trim() });
     if (existingResult.recordset.length > 0) {
         context.res = {
             status: 409,
@@ -317,8 +319,8 @@ async function createClient(context, body) {
  */
 async function updateClient(context, clientId, body) {
     context.log(`Updating client: ${clientId}`);
-    // Check client exists
-    const existingResult = await (0, database_1.executeQuery)(`SELECT client_id FROM clients WHERE client_id = @clientId`, { clientId });
+    // Check client exists and is not archived
+    const existingResult = await (0, database_1.executeQuery)(`SELECT client_id FROM clients WHERE client_id = @clientId AND is_archived = 0`, { clientId });
     if (existingResult.recordset.length === 0) {
         context.res = {
             status: 404,
@@ -327,9 +329,9 @@ async function updateClient(context, clientId, body) {
         };
         return;
     }
-    // If updating email, check for duplicates
+    // If updating email, check for duplicates (only among non-archived)
     if (body?.email) {
-        const emailCheck = await (0, database_1.executeQuery)(`SELECT client_id FROM clients WHERE email = @email AND client_id != @clientId`, { email: body.email.toLowerCase().trim(), clientId });
+        const emailCheck = await (0, database_1.executeQuery)(`SELECT client_id FROM clients WHERE email = @email AND client_id != @clientId AND is_archived = 0`, { email: body.email.toLowerCase().trim(), clientId });
         if (emailCheck.recordset.length > 0) {
             context.res = {
                 status: 409,
@@ -403,20 +405,23 @@ async function updateClient(context, clientId, body) {
 /**
  * Delete client and all related data (cascade delete)
  *
- * WARNING: This permanently deletes:
- * - All transactions for all accounts
- * - All accounts for all items
- * - All items (bank connections)
- * - All link tokens
- * - The client record
+ * CHANGED: Now a SOFT DELETE - sets is_archived flag instead of physical deletion
+ *
+ * Sets:
+ * - Client: is_archived = 1
+ * - Items: status = 'archived'
+ * - Accounts: is_active = 0, closed_at = NOW
+ * - Transactions: is_archived = 1 (if table exists)
+ *
+ * Preserves: link_tokens, webhook_log (for audit trail)
  *
  * @param context - Azure Function context
- * @param clientId - Client ID to delete
+ * @param clientId - Client ID to delete (archive)
  */
 async function deleteClient(context, clientId) {
-    context.log(`Deleting client: ${clientId}`);
+    context.log(`Deleting (archiving) client: ${clientId}`);
     // Check client exists
-    const existingResult = await (0, database_1.executeQuery)(`SELECT client_id, first_name, last_name FROM clients WHERE client_id = @clientId`, { clientId });
+    const existingResult = await (0, database_1.executeQuery)(`SELECT client_id, first_name, last_name FROM clients WHERE client_id = @clientId AND is_archived = 0`, { clientId });
     if (existingResult.recordset.length === 0) {
         context.res = {
             status: 404,
@@ -426,11 +431,11 @@ async function deleteClient(context, clientId) {
         return;
     }
     const client = existingResult.recordset[0];
-    context.log(`Deleting client: ${client.first_name} ${client.last_name} (ID: ${clientId})`);
-    // Get all item IDs for this client (for cascade delete)
-    const itemsResult = await (0, database_1.executeQuery)(`SELECT item_id FROM items WHERE client_id = @clientId`, { clientId });
+    context.log(`Archiving client: ${client.first_name} ${client.last_name} (ID: ${clientId})`);
+    // Get all item IDs for this client (for cascade)
+    const itemsResult = await (0, database_1.executeQuery)(`SELECT item_id FROM items WHERE client_id = @clientId AND is_archived = 0`, { clientId });
     const itemIds = itemsResult.recordset.map(i => i.item_id);
-    // Track what we're deleting for the response
+    // Track what we're archiving
     const deleteCounts = {
         transactions: 0,
         accounts: 0,
@@ -438,43 +443,43 @@ async function deleteClient(context, clientId) {
         link_tokens: 0,
         webhook_logs: 0,
     };
-    // Delete in order (respecting foreign key constraints)
-    // 1. Delete transactions for all accounts belonging to client's items
+    // SOFT DELETE CASCADE
+    // 1. Archive the client
+    await (0, database_1.executeQuery)(`UPDATE clients SET is_archived = 1, updated_at = GETDATE() WHERE client_id = @clientId`, { clientId });
+    // 2. Archive items (status field remains for link status tracking)
     if (itemIds.length > 0) {
-        const txResult = await (0, database_1.executeQuery)(`SELECT COUNT(*) as count FROM transactions 
-             WHERE account_id IN (
-                SELECT account_id FROM accounts WHERE item_id IN (${itemIds.join(',')})
-             )`);
-        deleteCounts.transactions = txResult.recordset[0]?.count || 0;
-        await (0, database_1.executeQuery)(`DELETE FROM transactions 
-             WHERE account_id IN (
-                SELECT account_id FROM accounts WHERE item_id IN (${itemIds.join(',')})
-             )`);
-        context.log(`Deleted ${deleteCounts.transactions} transactions`);
-        // 2. Delete accounts for all items
-        const accResult = await (0, database_1.executeQuery)(`SELECT COUNT(*) as count FROM accounts WHERE item_id IN (${itemIds.join(',')})`);
+        await (0, database_1.executeQuery)(`UPDATE items SET is_archived = 1, updated_at = GETDATE() WHERE client_id = @clientId AND is_archived = 0`, { clientId });
+        context.log(`Archived ${deleteCounts.items} items`);
+        // 3. Deactivate accounts
+        const accResult = await (0, database_1.executeQuery)(`SELECT COUNT(*) as count FROM accounts WHERE item_id IN (${itemIds.join(',')}) AND is_active = 1`);
         deleteCounts.accounts = accResult.recordset[0]?.count || 0;
-        await (0, database_1.executeQuery)(`DELETE FROM accounts WHERE item_id IN (${itemIds.join(',')})`);
-        context.log(`Deleted ${deleteCounts.accounts} accounts`);
+        if (deleteCounts.accounts > 0) {
+            await (0, database_1.executeQuery)(`UPDATE accounts SET is_active = 0, closed_at = GETDATE(), updated_at = GETDATE() 
+                 WHERE item_id IN (${itemIds.join(',')}) AND is_active = 1`);
+            context.log(`Deactivated ${deleteCounts.accounts} accounts`);
+        }
+        // 4. Archive transactions (if table exists)
+        try {
+            const accountIds = await (0, database_1.executeQuery)(`SELECT account_id FROM accounts WHERE item_id IN (${itemIds.join(',')})`);
+            const accountIdList = accountIds.recordset.map(a => a.account_id);
+            if (accountIdList.length > 0) {
+                const txResult = await (0, database_1.executeQuery)(`SELECT COUNT(*) as count FROM transactions 
+                     WHERE account_id IN (${accountIdList.join(',')}) AND is_archived = 0`);
+                deleteCounts.transactions = txResult.recordset[0]?.count || 0;
+                if (deleteCounts.transactions > 0) {
+                    await (0, database_1.executeQuery)(`UPDATE transactions SET is_archived = 1, updated_at = GETDATE() 
+                         WHERE account_id IN (${accountIdList.join(',')}) AND is_archived = 0`);
+                    context.log(`Archived ${deleteCounts.transactions} transactions`);
+                }
+            }
+        }
+        catch (txError) {
+            // Transactions table might not exist yet (Sprint 3)
+            context.log.warn('Could not archive transactions (table may not exist yet)');
+        }
     }
-    // 3. Delete webhook logs for this client's items
-    if (itemIds.length > 0) {
-        const whResult = await (0, database_1.executeQuery)(`SELECT COUNT(*) as count FROM webhook_log WHERE item_id IN (${itemIds.join(',')})`);
-        deleteCounts.webhook_logs = whResult.recordset[0]?.count || 0;
-        await (0, database_1.executeQuery)(`DELETE FROM webhook_log WHERE item_id IN (${itemIds.join(',')})`);
-        context.log(`Deleted ${deleteCounts.webhook_logs} webhook logs`);
-    }
-    // 4. Delete items
-    await (0, database_1.executeQuery)(`DELETE FROM items WHERE client_id = @clientId`, { clientId });
-    context.log(`Deleted ${deleteCounts.items} items`);
-    // 5. Delete link tokens
-    const ltResult = await (0, database_1.executeQuery)(`SELECT COUNT(*) as count FROM link_tokens WHERE client_id = @clientId`, { clientId });
-    deleteCounts.link_tokens = ltResult.recordset[0]?.count || 0;
-    await (0, database_1.executeQuery)(`DELETE FROM link_tokens WHERE client_id = @clientId`, { clientId });
-    context.log(`Deleted ${deleteCounts.link_tokens} link tokens`);
-    // 6. Finally, delete the client
-    await (0, database_1.executeQuery)(`DELETE FROM clients WHERE client_id = @clientId`, { clientId });
-    context.log(`Client ${clientId} deleted successfully`);
+    // NOTE: link_tokens and webhook_log are NOT modified
+    context.log(`Client ${clientId} archived successfully`);
     context.res = {
         status: 200,
         body: {

@@ -28,6 +28,7 @@ interface ItemRecord {
     transactions_last_successful_update: string | null;
     created_at: string;
     updated_at: string;
+    is_archived: boolean;
 }
 
 /**
@@ -126,9 +127,10 @@ const httpTrigger: AzureFunction = async function (
                 has_sync_updates,
                 transactions_last_successful_update,
                 created_at,
-                updated_at
+                updated_at,
+                is_archived
             FROM items
-            WHERE client_id = @clientId
+            WHERE client_id = @clientId AND is_archived = 0
             ORDER BY created_at DESC`,
             { clientId: clientIdNum }
         );

@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Chip, ChipProps, Tooltip } from '@mui/material';
-import { CheckCircle, Error as ErrorIcon, Warning, Refresh, AccountBalance, Lock, AccessTime, Archive } from '@mui/icons-material';
+import { CheckCircle, Error as ErrorIcon, Warning, Refresh, AccountBalance, Lock, AccessTime} from '@mui/icons-material';
 import { ItemStatus } from '../types/plaid';
 
 interface StatusConfig {
@@ -21,7 +21,6 @@ const STATUS_CONFIG: Record<ItemStatus, StatusConfig> = {
     login_required: { label: 'Login Required', color: 'error', icon: <Lock sx={{ fontSize: 16 }} />, description: 'Client needs to re-authenticate with their bank', action: 'Send update link to client' },
     needs_update: { label: 'Needs Update', color: 'warning', icon: <Warning sx={{ fontSize: 16 }} />, description: 'New accounts available or consent expiring soon', action: 'Send update link to add new accounts' },
     error: { label: 'Error', color: 'error', icon: <ErrorIcon sx={{ fontSize: 16 }} />, description: 'An error occurred with this bank connection', action: 'Investigate error and consider re-connecting' },
-    archived: { label: 'Archived', color: 'default', icon: <Archive sx={{ fontSize: 16 }} />, description: 'Connection has been removed or revoked' },
 };
 
 interface StatusBadgeProps {

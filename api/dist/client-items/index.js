@@ -66,9 +66,10 @@ const httpTrigger = async function (context, req) {
                 has_sync_updates,
                 transactions_last_successful_update,
                 created_at,
-                updated_at
+                updated_at,
+                is_archived
             FROM items
-            WHERE client_id = @clientId
+            WHERE client_id = @clientId AND is_archived = 0
             ORDER BY created_at DESC`, { clientId: clientIdNum });
         // If no items, return empty array
         if (itemsResult.recordset.length === 0) {
