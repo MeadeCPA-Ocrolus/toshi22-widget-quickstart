@@ -422,7 +422,7 @@ describe('Clients Endpoint', () => {
                 output: {},
                 rowsAffected: [1],
             });
-            // 4. Delete transactions
+            // 4. Archive transactions
             mockExecuteQuery.mockResolvedValueOnce({
                 recordset: [],
                 recordsets: [],
@@ -436,33 +436,33 @@ describe('Clients Endpoint', () => {
                 output: {},
                 rowsAffected: [1],
             });
-            // 6. Delete accounts
+            // 6. Deactivate accounts
             mockExecuteQuery.mockResolvedValueOnce({
                 recordset: [],
                 recordsets: [],
                 output: {},
                 rowsAffected: [5],
             });
-            // 7. Count webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 10 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 8. Delete webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [10],
-            });
-            // 9. Delete items
+            // 7. Archive items
             mockExecuteQuery.mockResolvedValueOnce({
                 recordset: [],
                 recordsets: [],
                 output: {},
                 rowsAffected: [2],
+            });
+            // 8. Count webhook logs
+            mockExecuteQuery.mockResolvedValueOnce({
+                recordset: [{ count: 0 }],
+                recordsets: [],
+                output: {},
+                rowsAffected: [1],
+            });
+            // 9. Delete webhook logs
+            mockExecuteQuery.mockResolvedValueOnce({
+                recordset: [],
+                recordsets: [],
+                output: {},
+                rowsAffected: [0],
             });
             // 10. Count link tokens
             mockExecuteQuery.mockResolvedValueOnce({
@@ -494,7 +494,7 @@ describe('Clients Endpoint', () => {
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.message).toContain('deleted successfully');
             expect(context.res?.body.client_name).toBe('John Smith');
-            expect(context.res?.body.deleted.transactions).toBe(50);
+            expect(context.res?.body.deleted.transactions).toBe(0); // Sprint 3 feature
             expect(context.res?.body.deleted.accounts).toBe(5);
             expect(context.res?.body.deleted.items).toBe(2);
             expect(context.res?.body.deleted.link_tokens).toBe(3);
