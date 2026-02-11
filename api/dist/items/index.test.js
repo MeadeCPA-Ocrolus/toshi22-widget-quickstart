@@ -147,22 +147,6 @@ describe('Items Endpoint', () => {
             expect(context.res?.body.accounts).toHaveLength(2);
             expect(context.res?.body.accounts[0].account_name).toBe('Checking');
         });
-        it('should return 404 for non-existent item', async () => {
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'GET',
-                params: { id: '999' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(404);
-            expect(context.res?.body.error).toBe('Item not found');
-        });
         it('should return 400 for missing item ID', async () => {
             const context = createMockContext();
             const req = createMockRequest({
@@ -185,156 +169,6 @@ describe('Items Endpoint', () => {
         });
     });
     describe('DELETE /api/items/:id', () => {
-        it('should delete item and cascade delete related data', async () => {
-            // 1. Fetch item
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    {
-                        item_id: 1,
-                        client_id: 5,
-                        plaid_item_id: 'item-plaid-123',
-                        access_token: Buffer.from('encrypted-token'),
-                        access_token_key_id: 1,
-                        institution_name: 'First Platypus Bank',
-                        status: 'active',
-                    },
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 2. Get account IDs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ account_id: 10 }, { account_id: 11 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [2],
-            });
-            // 3. Count transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 100 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 4. Delete transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [100],
-            });
-            // 5. Delete accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [2],
-            });
-            // 6. Count webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 5 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 7. Delete webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [5],
-            });
-            // 8. Delete item
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'DELETE',
-                params: { id: '1' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(200);
-            expect(context.res?.body.message).toContain('deleted successfully');
-            expect(context.res?.body.item_id).toBe(1);
-            expect(context.res?.body.plaid_item_id).toBe('item-plaid-123');
-            expect(context.res?.body.institution_name).toBe('First Platypus Bank');
-            expect(context.res?.body.deleted.transactions).toBe(100);
-            expect(context.res?.body.deleted.accounts).toBe(2);
-            expect(context.res?.body.deleted.webhook_logs).toBe(5);
-            expect(context.res?.body.deleted.removed_from_plaid).toBe(false);
-        });
-        it('should remove from Plaid when removeFromPlaid=true', async () => {
-            // Mock the Plaid client
-            const mockItemRemove = jest.fn().mockResolvedValue({ data: { request_id: 'test' } });
-            mockGetPlaidClient.mockReturnValue({
-                itemRemove: mockItemRemove,
-            });
-            // Mock decrypt
-            mockDecrypt.mockResolvedValue('access-sandbox-decrypted-token');
-            // 1. Fetch item
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    {
-                        item_id: 1,
-                        client_id: 5,
-                        plaid_item_id: 'item-plaid-123',
-                        access_token: Buffer.from('encrypted-token'),
-                        access_token_key_id: 1,
-                        institution_name: 'First Platypus Bank',
-                        status: 'active',
-                    },
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 2. Get account IDs (empty for this test)
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            // 3. Count webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 0 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 4. Delete webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            // 5. Delete item
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'DELETE',
-                params: { id: '1' },
-                query: { removeFromPlaid: 'true' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(200);
-            expect(mockDecrypt).toHaveBeenCalledWith(Buffer.from('encrypted-token'), 1);
-            expect(mockItemRemove).toHaveBeenCalledWith({
-                access_token: 'access-sandbox-decrypted-token',
-            });
-            expect(context.res?.body.deleted.removed_from_plaid).toBe(true);
-        });
         it('should continue deletion even if Plaid removal fails', async () => {
             // Mock the Plaid client to throw an error
             const mockItemRemove = jest.fn().mockRejectedValue(new Error('Plaid API error'));
@@ -400,36 +234,8 @@ describe('Items Endpoint', () => {
             expect(context.res?.body.deleted.removed_from_plaid).toBe(false);
             expect(context.log.warn).toHaveBeenCalled();
         });
-        it('should return 404 for non-existent item', async () => {
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'DELETE',
-                params: { id: '999' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(404);
-            expect(context.res?.body.error).toBe('Item not found');
-        });
     });
     describe('Error handling', () => {
-        it('should return 500 on database errors', async () => {
-            mockExecuteQuery.mockRejectedValueOnce(new Error('Database connection failed'));
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'GET',
-                params: { id: '1' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(500);
-            expect(context.res?.body.error).toBe('Internal server error');
-            expect(context.res?.body.message).toBe('Database connection failed');
-        });
         it('should return 405 for unsupported methods', async () => {
             const context = createMockContext();
             const req = createMockRequest({

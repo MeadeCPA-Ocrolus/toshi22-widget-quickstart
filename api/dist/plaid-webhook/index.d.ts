@@ -5,7 +5,7 @@
  * - SESSION_FINISHED: Exchange token(s), save item(s) + accounts (with duplicate prevention)
  *   - SUPPORTS MULTI-ITEM: Loops through public_tokens[] array
  * - ITEM webhooks: Update item status (including ERROR with ITEM_LOGIN_REQUIRED)
- * - TRANSACTIONS webhooks: Set sync flag
+ * - TRANSACTIONS webhooks: Set sync flag (only when historical_update_complete=true for new items)
  * - USER_ACCOUNT_REVOKED: Mark specific account as inactive
  *
  * Endpoint: POST /api/plaid/webhook

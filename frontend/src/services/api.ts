@@ -219,7 +219,7 @@ export async function getFailedLinkSessions(clientId: number): Promise<FailedLin
 /**
  * Trigger transaction sync for an item
  * NOTE: Not yet implemented - placeholder for Sprint 3
- */
+ 
 export async function syncTransactions(
     itemId: number
 ): Promise<{ message: string; added: number; modified: number; removed: number }> {
@@ -228,6 +228,7 @@ export async function syncTransactions(
         { method: 'POST' }
     );
 }
+ */
 
 // ============================================================================
 // Utility Functions
@@ -283,3 +284,5 @@ export function formatRelativeTime(dateString: string | null): string {
 
     return formatDate(dateString);
 }
+
+export { fetchApi };

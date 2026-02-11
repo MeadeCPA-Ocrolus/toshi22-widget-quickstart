@@ -5,7 +5,7 @@
  * - SESSION_FINISHED: Exchange token(s), save item(s) + accounts (with duplicate prevention)
  *   - SUPPORTS MULTI-ITEM: Loops through public_tokens[] array
  * - ITEM webhooks: Update item status (including ERROR with ITEM_LOGIN_REQUIRED)
- * - TRANSACTIONS webhooks: Set sync flag
+ * - TRANSACTIONS webhooks: Set sync flag (only when historical_update_complete=true for new items)
  * - USER_ACCOUNT_REVOKED: Mark specific account as inactive
  * 
  * Endpoint: POST /api/plaid/webhook
@@ -53,6 +53,7 @@ function isOAuthInstitution(institutionId: string | null): boolean {
  * - ERROR webhook has error details in the `error` object
  * - USER_ACCOUNT_REVOKED has `account_id` for the specific revoked account
  * - SESSION_FINISHED has `public_token` OR `public_tokens[]` (for multi-item)
+ * - SYNC_UPDATES_AVAILABLE has `initial_update_complete` and `historical_update_complete`
  */
 interface PlaidWebhook {
     webhook_type: string;
@@ -76,6 +77,9 @@ interface PlaidWebhook {
     link_token?: string;
     // PENDING_DISCONNECT specific
     reason?: string;  // "INSTITUTION_MIGRATION" or "INSTITUTION_TOKEN_EXPIRATION"
+    // SYNC_UPDATES_AVAILABLE specific fields
+    initial_update_complete?: boolean;      // First 30 days of transactions ready
+    historical_update_complete?: boolean;   // Full history ready (up to 24 months)
 }
 
 /**
@@ -288,15 +292,56 @@ async function updateItemStatus(
             break;
 
         case 'SYNC_UPDATES_AVAILABLE':
-            // Transactions are ready to sync
-            // Don't change status, just set a flag
-            context.log(`Item ${webhook.item_id} has transaction updates available`);
-            await executeQuery(
-                `UPDATE items 
-                 SET has_sync_updates = 1, updated_at = GETDATE()
-                 WHERE plaid_item_id = @plaidItemId`,
-                { plaidItemId: webhook.item_id }
-            );
+            // ============================================================
+            // TRANSACTION SYNC STRATEGY
+            // 
+            // We ONLY sync when we have FULL transaction history:
+            // - For NEW items (no cursor): Wait for historical_update_complete = true
+            // - For EXISTING items (have cursor): Sync any incremental updates
+            //
+            // This follows Plaid's recommended approach and avoids the "optional"
+            // early sync pattern that only gets 30 days of data.
+            // ============================================================
+            {
+                const plaidItemId = webhook.item_id;
+                
+                // Check if this is an established item (has cursor from previous sync)
+                const cursorCheck = await executeQuery<{ transactions_cursor: string | null }>(
+                    `SELECT transactions_cursor FROM items 
+                     WHERE plaid_item_id = @plaidItemId AND is_archived = 0`,
+                    { plaidItemId }
+                );
+                
+                const hasExistingCursor = cursorCheck.recordset.length > 0 && 
+                                          cursorCheck.recordset[0].transactions_cursor !== null;
+                
+                if (hasExistingCursor) {
+                    // EXISTING ITEM with cursor: Always flag incremental updates for sync
+                    context.log(`Item ${plaidItemId} has incremental updates available - flagging for sync`);
+                    await executeQuery(
+                        `UPDATE items 
+                         SET has_sync_updates = 1, updated_at = GETDATE()
+                         WHERE plaid_item_id = @plaidItemId`,
+                        { plaidItemId }
+                    );
+                } else if (webhook.historical_update_complete === true) {
+                    // NEW ITEM with FULL history ready: Flag for initial sync
+                    context.log(`Item ${plaidItemId} has FULL transaction history available - flagging for initial sync`);
+                    await executeQuery(
+                        `UPDATE items 
+                         SET has_sync_updates = 1, updated_at = GETDATE()
+                         WHERE plaid_item_id = @plaidItemId`,
+                        { plaidItemId }
+                    );
+                } else {
+                    // NEW ITEM without full history: Wait for historical_update_complete
+                    const status = webhook.initial_update_complete 
+                        ? 'initial 30 days ready, waiting for full history' 
+                        : 'transaction data still loading';
+                    context.log(`Item ${plaidItemId}: ${status} - NOT flagging for sync yet`);
+                    // Don't set has_sync_updates - CPA will see it when historical_update_complete fires
+                }
+            }
             return; // Don't update status
     }
 
@@ -449,16 +494,12 @@ async function processSinglePublicToken(
         // User went through Link to re-authenticate or update accounts
         const existingItem = existingItemByPlaidId.recordset[0];
         
-        // VALIDATION 1: Reject update mode on archived items
-        // Archived means user revoked permissions or CPA intentionally removed
-        // Should require fresh new link, not update mode
+        // Log if we're unarchiving an item
         if (existingItem.status === 'archived') {
-            context.log.error(`${logPrefix}REJECTED: Update mode attempted on archived item ${existingItem.item_id}`);
-            context.log.error(`${logPrefix}Archived items cannot be updated - CPA should create a new link instead`);
-            throw new Error('Cannot update archived item. Please create a new link for this client.');
+            context.log(`${logPrefix}Unarchiving previously archived item ${existingItem.item_id}`);
         }
         
-        // VALIDATION 2: Reject if institution changed during update mode
+        // VALIDATION: Reject if institution changed during update mode
         // This shouldn't happen but indicates something is wrong
         if (existingItem.institution_id && institutionId && existingItem.institution_id !== institutionId) {
             context.log.error(`${logPrefix}REJECTED: Institution mismatch during update mode`);
@@ -475,6 +516,7 @@ async function processSinglePublicToken(
              SET access_token = @accessToken,
                  access_token_key_id = @keyId,
                  status = 'active',
+                 is_archived = 0,
                  is_oauth = @isOAuth,
                  last_error_code = NULL,
                  last_error_message = NULL,
@@ -488,7 +530,7 @@ async function processSinglePublicToken(
                 itemId,
             }
         );
-        context.log(`${logPrefix}Updated item ${itemId} - cleared errors, set status to active`);
+        context.log(`${logPrefix}Updated item ${itemId} - cleared errors, set status to active, unarchived`);
         
     } else if (existingActiveItemByInstitution.recordset.length > 0) {
         // Case B: DUPLICATE PREVENTION
@@ -533,13 +575,18 @@ async function processSinglePublicToken(
         
         // Update the existing item with the new plaid_item_id and access_token
         // The old access_token is now invalid per Plaid docs for Chase/PNC/etc
+        // Also clear the transactions_cursor since it belongs to the old access_token
         await executeQuery(
             `UPDATE items 
              SET plaid_item_id = @plaidItemId,
                  access_token = @accessToken,
                  access_token_key_id = @keyId,
                  status = 'active',
+                 is_archived = 0,
                  is_oauth = @isOAuth,
+                 transactions_cursor = NULL,
+                 transactions_cursor_last_updated = NULL,
+                 has_sync_updates = 0,
                  last_error_code = NULL,
                  last_error_message = NULL,
                  last_error_timestamp = NULL,
@@ -553,7 +600,7 @@ async function processSinglePublicToken(
                 itemId,
             }
         );
-        context.log(`${logPrefix}Updated existing item ${itemId} with new plaid_item_id (duplicate prevention)`);
+        context.log(`${logPrefix}Updated existing item ${itemId} with new plaid_item_id (duplicate prevention, unarchived, cursor cleared)`);
         
     } else {
         // Case C & D: New item - INSERT
@@ -695,6 +742,39 @@ async function processSinglePublicToken(
             params
         );
         context.log(`${logPrefix}Marked deselected accounts as inactive for item ${itemId}`);
+    }
+
+    // Step 7: Activate and perform initial transaction sync
+    // 
+    // Per Plaid docs: "Call the /transactions/sync wrapper you created in order to 
+    // activate the Item for the SYNC_UPDATES_AVAILABLE webhook."
+    //
+    // We use syncTransactionsForItem which:
+    // 1. Calls Plaid's /transactions/sync API
+    // 2. Handles pagination (fetches all pages)
+    // 3. Saves transactions to the database
+    // 4. Saves the cursor for future syncs
+    //
+    // Note: Initial sync may return transactions immediately or be empty
+    // (Plaid may still be fetching historical data in the background)
+    try {
+        context.log(`${logPrefix}Performing initial transaction sync for item ${itemId}...`);
+        
+        // Import and call the sync service
+        const { syncTransactionsForItem } = await import('../shared/transaction-sync-service');
+        const syncResult = await syncTransactionsForItem(context, itemId);
+        
+        if (syncResult.success) {
+            context.log(
+                `${logPrefix}Initial sync complete: ` +
+                `${syncResult.added} added, ${syncResult.modified} modified, ${syncResult.removed} removed`
+            );
+        } else {
+            context.log.warn(`${logPrefix}Initial sync returned error: ${syncResult.error}`);
+        }
+    } catch (syncErr) {
+        // Log but don't fail - webhooks will still work, CPA can trigger sync later
+        context.log.warn(`${logPrefix}Could not perform initial transaction sync (non-fatal): ${syncErr}`);
     }
 
     return { itemId, plaidItemId, institutionName, isDuplicate, isOAuth };
@@ -1023,6 +1103,11 @@ const httpTrigger: AzureFunction = async function (
         // Log additional details for debugging
         if (webhook.error) {
             context.log(`Error details: ${webhook.error.error_code} - ${webhook.error.error_message}`);
+        }
+        
+        // Log SYNC_UPDATES_AVAILABLE specific fields
+        if (webhook.webhook_code === 'SYNC_UPDATES_AVAILABLE') {
+            context.log(`initial_update_complete: ${webhook.initial_update_complete}, historical_update_complete: ${webhook.historical_update_complete}`);
         }
 
         const webhookId = generateWebhookId(webhook, new Date());

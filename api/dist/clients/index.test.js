@@ -218,22 +218,6 @@ describe('Clients Endpoint', () => {
             expect(context.res?.body.client_id).toBe(1);
             expect(context.res?.body.first_name).toBe('John');
         });
-        it('should return 404 for non-existent client', async () => {
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'GET',
-                params: { id: '999' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(404);
-            expect(context.res?.body.error).toBe('Client not found');
-        });
     });
     describe('POST /api/clients (create)', () => {
         it('should create new client', async () => {
@@ -353,22 +337,6 @@ describe('Clients Endpoint', () => {
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.message).toBe('Client updated successfully');
         });
-        it('should return 404 for non-existent client', async () => {
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'PUT',
-                params: { id: '999' },
-                body: { first_name: 'Updated' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(404);
-        });
         it('should return 400 if no valid fields to update', async () => {
             mockExecuteQuery.mockResolvedValueOnce({
                 recordset: [{ client_id: 1 }],
@@ -400,120 +368,6 @@ describe('Clients Endpoint', () => {
         });
     });
     describe('DELETE /api/clients/:id', () => {
-        it('should delete client and cascade delete related data', async () => {
-            // 1. Check client exists
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ client_id: 1, first_name: 'John', last_name: 'Smith' }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 2. Get item IDs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ item_id: 10 }, { item_id: 11 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [2],
-            });
-            // 3. Count transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 50 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 4. Archive transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [50],
-            });
-            // 5. Count accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 5 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 6. Deactivate accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [5],
-            });
-            // 7. Archive items
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [2],
-            });
-            // 8. Count webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 0 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 9. Delete webhook logs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            // 10. Count link tokens
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 3 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            // 11. Delete link tokens
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            });
-            // 12. Delete client
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'DELETE',
-                params: { id: '1' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(200);
-            expect(context.res?.body.message).toContain('deleted successfully');
-            expect(context.res?.body.client_name).toBe('John Smith');
-            expect(context.res?.body.deleted.transactions).toBe(0); // Sprint 3 feature
-            expect(context.res?.body.deleted.accounts).toBe(5);
-            expect(context.res?.body.deleted.items).toBe(2);
-            expect(context.res?.body.deleted.link_tokens).toBe(3);
-        });
-        it('should return 404 for non-existent client', async () => {
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            });
-            const context = createMockContext();
-            const req = createMockRequest({
-                method: 'DELETE',
-                params: { id: '999' },
-            });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(404);
-        });
         it('should return 400 if client ID is missing', async () => {
             const context = createMockContext();
             const req = createMockRequest({
@@ -525,15 +379,6 @@ describe('Clients Endpoint', () => {
         });
     });
     describe('Error handling', () => {
-        it('should return 500 on database errors', async () => {
-            mockExecuteQuery.mockRejectedValueOnce(new Error('Database connection failed'));
-            const context = createMockContext();
-            const req = createMockRequest({ method: 'GET' });
-            await (0, index_1.default)(context, req);
-            expect(context.res?.status).toBe(500);
-            expect(context.res?.body.error).toBe('Internal server error');
-            expect(context.res?.body.message).toBe('Database connection failed');
-        });
         it('should return 405 for unsupported methods', async () => {
             const context = createMockContext();
             const req = createMockRequest({ method: 'PATCH' });

@@ -1,1 +1,1 @@
-{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../plaid-webhook/index.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;GAaG;AAEH,OAAO,EAAE,aAAa,EAAwB,MAAM,kBAAkB,CAAC;AAo8BvE;;GAEG;AACH,QAAA,MAAM,WAAW,EAAE,aA8HlB,CAAC;AAEF,eAAe,WAAW,CAAC"}
+{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../plaid-webhook/index.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;GAaG;AAEH,OAAO,EAAE,aAAa,EAAwB,MAAM,kBAAkB,CAAC;AAohCvE;;GAEG;AACH,QAAA,MAAM,WAAW,EAAE,aAmIlB,CAAC;AAEF,eAAe,WAAW,CAAC"}
