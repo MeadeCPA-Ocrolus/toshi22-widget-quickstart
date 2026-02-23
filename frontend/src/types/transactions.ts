@@ -52,9 +52,11 @@ export interface TransactionRecord {
     plaid_detailed_category: string | null;
     plaid_confidence_score: number | null; // 0.00 to 1.00
     
-    // Manual categorization
-    category_verified: boolean;
-    final_category: string;
+    // Manual categorization (uses same Plaid category taxonomy)
+    category_verified: boolean;      // True if HIGH/VERY_HIGH confidence OR manually verified
+    manually_verified: boolean;      // True ONLY if CPA manually verified/changed
+    manual_primary_category: string | null;   // CPA override (raw Plaid format)
+    manual_detailed_category: string | null;  // CPA override (raw Plaid format)
     
     // Processing status
     processed_into_ledger: boolean;
@@ -267,6 +269,7 @@ export function formatTransactionAmount(amount: number, currencyCode = 'USD'): s
 
 /**
  * Check if a transaction needs CPA review based on confidence score
+ * HIGH (>=0.80) and VERY_HIGH (>=0.95) don't need review
  */
 export function needsCategoryReview(
     confidenceScore: number | null,
@@ -274,5 +277,5 @@ export function needsCategoryReview(
 ): boolean {
     if (categoryVerified) return false;
     if (confidenceScore === null) return true;
-    return confidenceScore < 0.7; // MEDIUM threshold
+    return confidenceScore < 0.80; // Below HIGH threshold
 }

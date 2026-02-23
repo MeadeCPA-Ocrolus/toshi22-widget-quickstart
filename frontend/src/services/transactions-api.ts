@@ -201,6 +201,67 @@ export interface TransactionStats {
     totalExpenses: number;
 }
 
+// ============================================================================
+// Transaction Categorization
+// ============================================================================
+
+/**
+ * Request payload for categorizing a transaction
+ */
+export interface CategorizeTransactionRequest {
+    primary_category: string;   // Raw Plaid format: FOOD_AND_DRINK
+    detailed_category: string;  // Raw Plaid format: FOOD_AND_DRINK_RESTAURANT
+}
+
+/**
+ * Response from categorize endpoint
+ */
+export interface CategorizeTransactionResponse {
+    success: boolean;
+    transaction_id: number;
+    primary_category: string;
+    detailed_category: string;
+    manually_verified: boolean;
+}
+
+/**
+ * Manually categorize a transaction
+ * 
+ * Sets manual_primary_category and manual_detailed_category,
+ * marks category_verified=true and manually_verified=true.
+ * 
+ * @param transactionId - Internal transaction_id
+ * @param category - Primary and detailed category (raw Plaid format)
+ * @returns Promise with updated transaction info
+ */
+export async function categorizeTransaction(
+    transactionId: number,
+    category: CategorizeTransactionRequest
+): Promise<CategorizeTransactionResponse> {
+    return fetchApi<CategorizeTransactionResponse>(
+        `/transactions/${transactionId}/categorize`,
+        {
+            method: 'PUT',
+            body: JSON.stringify(category),
+        }
+    );
+}
+
+/**
+ * Verify a transaction's existing category without changing it
+ * Marks category_verified=true and manually_verified=true
+ */
+export async function verifyTransactionCategory(
+    transactionId: number
+): Promise<CategorizeTransactionResponse> {
+    return fetchApi<CategorizeTransactionResponse>(
+        `/transactions/${transactionId}/verify`,
+        {
+            method: 'PUT',
+        }
+    );
+}
+
 /**
  * Calculate statistics from a list of transactions
  * Client-side helper for dashboard display

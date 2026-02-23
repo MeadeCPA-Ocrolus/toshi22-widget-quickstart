@@ -3,6 +3,8 @@
  *
  * GET /api/transactions - List transactions with filtering
  * GET /api/transactions/:id - Get single transaction
+ * PUT /api/transactions/:id/categorize - Manually categorize a transaction
+ * PUT /api/transactions/:id/verify - Verify existing category without changing
  *
  * Query Parameters for GET /api/transactions:
  * - accountId: Filter by account

@@ -32,6 +32,10 @@ import {
     Link,
     LinearProgress,
     Skeleton,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
 } from '@mui/material';
 import {
     ArrowBack,
@@ -56,6 +60,8 @@ import {
     Schedule,
     CheckCircle,
     Warning,
+    Edit,
+    StarOutline,
 } from '@mui/icons-material';
 import {
     Client,
@@ -84,6 +90,7 @@ import {
     getTransactionsForAccount,
     syncTransactionsForItem,
     refreshTransactionsForItem,
+    categorizeTransaction,
 } from '../services/transactions-api';
 import {
     StatusBadge,
@@ -92,6 +99,8 @@ import {
     AccountTypeBadge,
 } from '../Components/StatusBadge';
 import { SendLinkDialog } from '../Components/SendLinkDialog';
+import { CategorySelector } from '../Components/CategorySelector';
+import { getCategoryDisplay } from '../constants/plaidCategories';
 
 // ============================================================================
 // Transaction Row Component
@@ -99,13 +108,47 @@ import { SendLinkDialog } from '../Components/SendLinkDialog';
 
 interface TransactionRowProps {
     transaction: TransactionWithDetails;
+    onCategorize: (tx: TransactionWithDetails) => void;
 }
 
-const TransactionRow: React.FC<TransactionRowProps> = ({ transaction }) => {
+const TransactionRow: React.FC<TransactionRowProps> = ({ transaction, onCategorize }) => {
     const isExpense = transaction.amount > 0;
     const needsReview = needsCategoryReview(
         transaction.plaid_confidence_score,
         transaction.category_verified
+    );
+    
+    // Get display category (prefer manual if set, else Plaid)
+    const primaryRaw = transaction.manual_primary_category || transaction.plaid_primary_category;
+    const detailedRaw = transaction.manual_detailed_category || transaction.plaid_detailed_category;
+    const categoryDisplay = getCategoryDisplay(primaryRaw, detailedRaw);
+    
+    // Map numeric score back to Plaid's confidence level strings
+    const confidenceScore = transaction.plaid_confidence_score;
+    const confidenceLevel = confidenceScore === null ? 'UNKNOWN' 
+        : confidenceScore >= 0.95 ? 'VERY_HIGH'
+        : confidenceScore >= 0.80 ? 'HIGH'
+        : confidenceScore >= 0.50 ? 'MEDIUM'
+        : 'LOW';
+    const confidenceDisplay = confidenceLevel.replace('_', ' ');
+    const confidenceColor = 
+        confidenceLevel === 'VERY_HIGH' ? 'success.main'
+        : confidenceLevel === 'HIGH' ? 'success.light'
+        : confidenceLevel === 'MEDIUM' ? 'warning.main'
+        : confidenceLevel === 'LOW' ? 'error.main'
+        : 'text.disabled';
+    
+    // Build tooltip with detailed category + confidence
+    const tooltipContent = (
+        <Box>
+            <Typography variant="body2">
+                {categoryDisplay.primary}
+                {categoryDisplay.detailed && ` → ${categoryDisplay.detailed}`}
+            </Typography>
+            <Typography variant="caption" sx={{ color: confidenceColor, display: 'block', mt: 0.5 }}>
+                Plaid Confidence: {confidenceDisplay}
+            </Typography>
+        </Box>
     );
 
     return (
@@ -115,6 +158,7 @@ const TransactionRow: React.FC<TransactionRowProps> = ({ transaction }) => {
                 bgcolor: transaction.pending ? 'rgba(255, 193, 7, 0.08)' : 'inherit',
             }}
         >
+            {/* Date */}
             <TableCell sx={{ py: 1 }}>
                 <Typography variant="body2" fontWeight={500}>
                     {formatDate(transaction.transaction_date)}
@@ -128,6 +172,8 @@ const TransactionRow: React.FC<TransactionRowProps> = ({ transaction }) => {
                     />
                 )}
             </TableCell>
+            
+            {/* Merchant / Description */}
             <TableCell sx={{ py: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {transaction.merchant_logo_url && (
@@ -142,26 +188,72 @@ const TransactionRow: React.FC<TransactionRowProps> = ({ transaction }) => {
                         <Typography variant="body2" fontWeight={500} noWrap sx={{ maxWidth: 200 }}>
                             {transaction.merchant_name || transaction.original_description}
                         </Typography>
+                        {/* Always show original description for context when merchant name exists */}
                         {transaction.merchant_name && (
                             <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 200, display: 'block' }}>
                                 {transaction.original_description}
                             </Typography>
                         )}
+                        {/* Show "Needs categorization" for ALL low-confidence transactions */}
+                        {needsReview && (
+                            <Typography variant="caption" color="warning.main" sx={{ fontStyle: 'italic' }}>
+                                Needs categorization
+                            </Typography>
+                        )}
                     </Box>
                 </Box>
             </TableCell>
+            
+            {/* Category with status indicators */}
             <TableCell sx={{ py: 1 }}>
-                <Tooltip title={transaction.plaid_detailed_category || 'Unknown'}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary">
-                            {transaction.plaid_primary_category?.replace(/_/g, ' ') || '—'}
-                        </Typography>
-                        {needsReview && (
-                            <Warning sx={{ fontSize: 14, color: 'warning.main' }} />
-                        )}
+                <Tooltip title={tooltipContent} arrow>
+                    <Box 
+                        sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: 0.5,
+                            cursor: 'pointer',
+                            '&:hover': { opacity: 0.8 },
+                        }}
+                        onClick={() => onCategorize(transaction)}
+                    >
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                            <Typography variant="caption" color="text.secondary">
+                                {categoryDisplay.primary}
+                            </Typography>
+                            {/* Show confidence level as small text */}
+                            <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                    fontSize: '0.65rem', 
+                                    color: confidenceColor,
+                                    lineHeight: 1,
+                                }}
+                            >
+                                {confidenceDisplay}
+                            </Typography>
+                        </Box>
+                        
+                        {/* Status indicator */}
+                        {needsReview ? (
+                            // Needs review - warning icon
+                            <Tooltip title="Needs verification - click to categorize">
+                                <Warning sx={{ fontSize: 14, color: 'warning.main' }} />
+                            </Tooltip>
+                        ) : transaction.manually_verified ? (
+                            // Manually verified - small star
+                            <Tooltip title="Manually verified by CPA">
+                                <StarOutline sx={{ fontSize: 12, color: 'success.main' }} />
+                            </Tooltip>
+                        ) : null}
+                        
+                        {/* Edit icon on hover */}
+                        <Edit sx={{ fontSize: 12, color: 'action.disabled', ml: 0.5 }} />
                     </Box>
                 </Tooltip>
             </TableCell>
+            
+            {/* Amount */}
             <TableCell align="right" sx={{ py: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
                     {isExpense ? (
@@ -200,6 +292,16 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     const [loaded, setLoaded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [total, setTotal] = useState(0);
+    
+    // Categorization dialog state
+    const [categorizeDialogOpen, setCategorizeDialogOpen] = useState(false);
+    const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithDetails | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    
+    // Confirmation dialog for high confidence transactions
+    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+    const [pendingTransaction, setPendingTransaction] = useState<TransactionWithDetails | null>(null);
 
     // Load transactions when expanded for the first time
     useEffect(() => {
@@ -223,7 +325,100 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
         }
     };
 
+    // Check if transaction has high confidence
+    const isHighConfidence = (tx: TransactionWithDetails): boolean => {
+        const score = tx.plaid_confidence_score;
+        return score !== null && score >= 0.80; // HIGH or VERY_HIGH
+    };
+
+    const handleOpenCategorize = (tx: TransactionWithDetails) => {
+        // If high confidence, show confirmation first
+        if (isHighConfidence(tx)) {
+            setPendingTransaction(tx);
+            setConfirmDialogOpen(true);
+        } else {
+            openCategorizeDialog(tx);
+        }
+    };
+
+    const handleConfirmOverride = () => {
+        if (pendingTransaction) {
+            openCategorizeDialog(pendingTransaction);
+        }
+        setConfirmDialogOpen(false);
+        setPendingTransaction(null);
+    };
+
+    const openCategorizeDialog = (tx: TransactionWithDetails) => {
+        setSelectedTransaction(tx);
+        // Pre-select current category if exists
+        setSelectedCategory(
+            tx.manual_detailed_category || tx.plaid_detailed_category || null
+        );
+        setCategorizeDialogOpen(true);
+    };
+
+    const handleCategoryChange = (primary: string, detailed: string) => {
+        setSelectedCategory(detailed);
+    };
+
+    const handleSaveCategory = async () => {
+        if (!selectedTransaction || !selectedCategory) return;
+        
+        setSaving(true);
+        try {
+            // Find the primary category from detailed
+            const category = await import('../constants/plaidCategories').then(m => 
+                m.ALL_CATEGORIES.find(c => c.detailed === selectedCategory)
+            );
+            
+            if (!category) {
+                throw new Error('Invalid category selected');
+            }
+            
+            await categorizeTransaction(selectedTransaction.transaction_id, {
+                primary_category: category.primary,
+                detailed_category: category.detailed,
+            });
+            
+            // Update local state
+            setTransactions(prev => prev.map(tx => 
+                tx.transaction_id === selectedTransaction.transaction_id
+                    ? {
+                        ...tx,
+                        manual_primary_category: category.primary,
+                        manual_detailed_category: category.detailed,
+                        category_verified: true,
+                        manually_verified: true,
+                    }
+                    : tx
+            ));
+            
+            setCategorizeDialogOpen(false);
+            setSelectedTransaction(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to save category');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     if (!expanded) return null;
+
+    // Get display info for selected transaction in dialog
+    const selectedTxDisplay = selectedTransaction ? getCategoryDisplay(
+        selectedTransaction.plaid_primary_category,
+        selectedTransaction.plaid_detailed_category
+    ) : null;
+    
+    // Get confidence level for selected transaction
+    const getConfidenceInfo = (score: number | null) => {
+        if (score === null) return { level: 'UNKNOWN', color: 'text.disabled' };
+        if (score >= 0.95) return { level: 'VERY HIGH', color: 'success.main' };
+        if (score >= 0.80) return { level: 'HIGH', color: 'success.light' };
+        if (score >= 0.50) return { level: 'MEDIUM', color: 'warning.main' };
+        return { level: 'LOW', color: 'error.main' };
+    };
 
     return (
         <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
@@ -239,7 +434,7 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
             )}
 
             {error && (
-                <Alert severity="error" sx={{ my: 1 }}>
+                <Alert severity="error" sx={{ my: 1 }} onClose={() => setError(null)}>
                     {error}
                 </Alert>
             )}
@@ -267,7 +462,11 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
                             </TableHead>
                             <TableBody>
                                 {transactions.map((tx) => (
-                                    <TransactionRow key={tx.transaction_id} transaction={tx} />
+                                    <TransactionRow 
+                                        key={tx.transaction_id} 
+                                        transaction={tx}
+                                        onCategorize={handleOpenCategorize}
+                                    />
                                 ))}
                             </TableBody>
                         </Table>
@@ -279,6 +478,211 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
                     )}
                 </>
             )}
+
+            {/* Confirmation Dialog for High Confidence Override */}
+            <Dialog 
+                open={confirmDialogOpen} 
+                onClose={() => {
+                    setConfirmDialogOpen(false);
+                    setPendingTransaction(null);
+                }}
+                maxWidth="xs"
+            >
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Warning sx={{ color: 'warning.main' }} />
+                    High Confidence Category
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2">
+                        This transaction already has a <strong>{pendingTransaction && getConfidenceInfo(pendingTransaction.plaid_confidence_score).level}</strong> confidence score from Plaid.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                        Are you sure you want to manually change the category?
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button 
+                        onClick={() => {
+                            setConfirmDialogOpen(false);
+                            setPendingTransaction(null);
+                        }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={handleConfirmOverride}
+                        variant="contained"
+                        color="warning"
+                    >
+                        Yes, Change Category
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Categorization Dialog */}
+            <Dialog 
+                open={categorizeDialogOpen} 
+                onClose={() => setCategorizeDialogOpen(false)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Categorize Transaction</DialogTitle>
+                <DialogContent>
+                    {selectedTransaction && (
+                        <Box>
+                            {/* Transaction Details Section */}
+                            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Grid container spacing={2}>
+                                    {/* Left Column - Basic Info */}
+                                    <Grid item xs={12} sm={6}>
+                                        <Typography variant="overline" color="text.secondary">
+                                            Date
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>
+                                            {formatDate(selectedTransaction.transaction_date)}
+                                            {selectedTransaction.pending && (
+                                                <Chip label="Pending" size="small" color="warning" sx={{ ml: 1, height: 18 }} />
+                                            )}
+                                        </Typography>
+                                        
+                                        <Typography variant="overline" color="text.secondary">
+                                            Merchant
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>
+                                            {selectedTransaction.merchant_name || 'Unknown'}
+                                        </Typography>
+                                        
+                                        <Typography variant="overline" color="text.secondary">
+                                            Amount
+                                        </Typography>
+                                        <Typography 
+                                            variant="h6" 
+                                            sx={{ 
+                                                color: selectedTransaction.amount > 0 ? 'error.main' : 'success.main',
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {formatTransactionAmount(selectedTransaction.amount)}
+                                        </Typography>
+                                    </Grid>
+                                    
+                                    {/* Right Column - Additional Info */}
+                                    <Grid item xs={12} sm={6}>
+                                        <Typography variant="overline" color="text.secondary">
+                                            Payment Channel
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>
+                                            {selectedTransaction.payment_channel?.replace('_', ' ') || 'N/A'}
+                                        </Typography>
+                                        
+                                        <Typography variant="overline" color="text.secondary">
+                                            Transaction Type
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>
+                                            {selectedTransaction.is_transfer ? 'Transfer' : selectedTransaction.amount > 0 ? 'Expense' : 'Income'}
+                                        </Typography>
+                                        
+                                        <Typography variant="overline" color="text.secondary">
+                                            Account
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={500}>
+                                            {account.account_name}
+                                        </Typography>
+                                    </Grid>
+                                    
+                                    {/* Full Width - Original Description */}
+                                    <Grid item xs={12}>
+                                        <Divider sx={{ my: 1 }} />
+                                        <Typography variant="overline" color="text.secondary">
+                                            Original Bank Description
+                                        </Typography>
+                                        <Typography 
+                                            variant="body2" 
+                                            sx={{ 
+                                                bgcolor: 'background.paper', 
+                                                p: 1, 
+                                                borderRadius: 1,
+                                                fontFamily: 'monospace',
+                                                fontSize: '0.85rem',
+                                            }}
+                                        >
+                                            {selectedTransaction.original_description}
+                                        </Typography>
+                                    </Grid>
+                                </Grid>
+                            </Paper>
+                            
+                            {/* Plaid's Suggestion with Confidence */}
+                            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
+                                <Typography variant="overline" color="text.secondary">
+                                    Plaid's Suggestion
+                                </Typography>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                                    <Box>
+                                        <Typography variant="body1" fontWeight={500}>
+                                            {selectedTxDisplay?.primary || 'Uncategorized'}
+                                            {selectedTxDisplay?.detailed && (
+                                                <Typography component="span" color="text.secondary">
+                                                    {' → '}{selectedTxDisplay.detailed}
+                                                </Typography>
+                                            )}
+                                        </Typography>
+                                    </Box>
+                                    <Chip 
+                                        label={getConfidenceInfo(selectedTransaction.plaid_confidence_score).level}
+                                        size="small"
+                                        sx={{ 
+                                            bgcolor: getConfidenceInfo(selectedTransaction.plaid_confidence_score).color,
+                                            color: 'white',
+                                            fontWeight: 600,
+                                        }}
+                                    />
+                                </Box>
+                            </Paper>
+                            
+                            {/* Current Manual Override (if exists) */}
+                            {selectedTransaction.manually_verified && selectedTransaction.manual_detailed_category && (
+                                <Alert severity="info" sx={{ mb: 2 }} icon={<StarOutline />}>
+                                    <Typography variant="body2">
+                                        <strong>Current Manual Override:</strong>{' '}
+                                        {getCategoryDisplay(
+                                            selectedTransaction.manual_primary_category,
+                                            selectedTransaction.manual_detailed_category
+                                        ).primary}
+                                        {' → '}
+                                        {getCategoryDisplay(
+                                            selectedTransaction.manual_primary_category,
+                                            selectedTransaction.manual_detailed_category
+                                        ).detailed}
+                                    </Typography>
+                                </Alert>
+                            )}
+                            
+                            {/* Category Selector */}
+                            <Typography variant="overline" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                                Select New Category
+                            </Typography>
+                            <CategorySelector
+                                value={selectedCategory}
+                                onChange={handleCategoryChange}
+                                label="Category"
+                            />
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setCategorizeDialogOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={handleSaveCategory}
+                        variant="contained"
+                        disabled={!selectedCategory || saving}
+                    >
+                        {saving ? <CircularProgress size={20} /> : 'Save Category'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 };

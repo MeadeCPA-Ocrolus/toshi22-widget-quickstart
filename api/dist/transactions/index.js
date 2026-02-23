@@ -4,6 +4,8 @@
  *
  * GET /api/transactions - List transactions with filtering
  * GET /api/transactions/:id - Get single transaction
+ * PUT /api/transactions/:id/categorize - Manually categorize a transaction
+ * PUT /api/transactions/:id/verify - Verify existing category without changing
  *
  * Query Parameters for GET /api/transactions:
  * - accountId: Filter by account
@@ -26,7 +28,7 @@ const database_1 = require("../shared/database");
  */
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 /**
@@ -40,11 +42,36 @@ const httpTrigger = async function (context, req) {
     }
     try {
         const transactionId = req.params?.id;
-        if (transactionId) {
-            await getTransaction(context, parseInt(transactionId, 10));
+        const action = req.params?.action; // 'categorize' or 'verify'
+        if (req.method === 'PUT' && transactionId) {
+            if (action === 'categorize') {
+                await categorizeTransaction(context, req, parseInt(transactionId, 10));
+            }
+            else if (action === 'verify') {
+                await verifyTransaction(context, parseInt(transactionId, 10));
+            }
+            else {
+                context.res = {
+                    status: 400,
+                    body: { error: 'Invalid action. Use /categorize or /verify' },
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                };
+            }
+        }
+        else if (req.method === 'GET') {
+            if (transactionId) {
+                await getTransaction(context, parseInt(transactionId, 10));
+            }
+            else {
+                await listTransactions(context, req);
+            }
         }
         else {
-            await listTransactions(context, req);
+            context.res = {
+                status: 405,
+                body: { error: 'Method not allowed' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            };
         }
     }
     catch (err) {
@@ -59,6 +86,94 @@ const httpTrigger = async function (context, req) {
         };
     }
 };
+/**
+ * Manually categorize a transaction
+ */
+async function categorizeTransaction(context, req, transactionId) {
+    context.log(`Categorizing transaction: ${transactionId}`);
+    const body = req.body || {};
+    const { primary_category, detailed_category } = body;
+    if (!primary_category || !detailed_category) {
+        context.res = {
+            status: 400,
+            body: { error: 'primary_category and detailed_category are required' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
+    // Validate transaction exists
+    const existing = await (0, database_1.executeQuery)(`SELECT transaction_id FROM transactions WHERE transaction_id = @transactionId AND is_archived = 0`, { transactionId });
+    if (existing.recordset.length === 0) {
+        context.res = {
+            status: 404,
+            body: { error: 'Transaction not found' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
+    // Update transaction with manual category
+    await (0, database_1.executeQuery)(`UPDATE transactions
+         SET manual_primary_category = @primaryCategory,
+             manual_detailed_category = @detailedCategory,
+             category_verified = 1,
+             manually_verified = 1,
+             updated_at = GETDATE()
+         WHERE transaction_id = @transactionId`, {
+        transactionId,
+        primaryCategory: primary_category,
+        detailedCategory: detailed_category,
+    });
+    context.log(`Transaction ${transactionId} categorized: ${primary_category} / ${detailed_category}`);
+    context.res = {
+        status: 200,
+        body: {
+            success: true,
+            transaction_id: transactionId,
+            primary_category,
+            detailed_category,
+            manually_verified: true,
+        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    };
+}
+/**
+ * Verify a transaction's existing category without changing it
+ */
+async function verifyTransaction(context, transactionId) {
+    context.log(`Verifying transaction: ${transactionId}`);
+    // Validate transaction exists
+    const existing = await (0, database_1.executeQuery)(`SELECT transaction_id, plaid_primary_category, plaid_detailed_category 
+         FROM transactions WHERE transaction_id = @transactionId AND is_archived = 0`, { transactionId });
+    if (existing.recordset.length === 0) {
+        context.res = {
+            status: 404,
+            body: { error: 'Transaction not found' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
+    const tx = existing.recordset[0];
+    // Mark as verified (use Plaid category as manual if not already set)
+    await (0, database_1.executeQuery)(`UPDATE transactions
+         SET category_verified = 1,
+             manually_verified = 1,
+             manual_primary_category = COALESCE(manual_primary_category, plaid_primary_category),
+             manual_detailed_category = COALESCE(manual_detailed_category, plaid_detailed_category),
+             updated_at = GETDATE()
+         WHERE transaction_id = @transactionId`, { transactionId });
+    context.log(`Transaction ${transactionId} verified`);
+    context.res = {
+        status: 200,
+        body: {
+            success: true,
+            transaction_id: transactionId,
+            primary_category: tx.plaid_primary_category,
+            detailed_category: tx.plaid_detailed_category,
+            manually_verified: true,
+        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    };
+}
 /**
  * Get a single transaction by ID
  */
@@ -144,8 +259,8 @@ async function listTransactions(context, req) {
     if (uncategorizedOnly) {
         // Transactions that need categorization:
         // - category_verified is false AND
-        // - confidence score is low/null OR final_category is 'not_verified'
-        conditions.push('(t.category_verified = 0 AND (t.plaid_confidence_score IS NULL OR t.plaid_confidence_score < 0.7))');
+        // - confidence score is below HIGH threshold (< 0.80)
+        conditions.push('(t.category_verified = 0 AND (t.plaid_confidence_score IS NULL OR t.plaid_confidence_score < 0.80))');
     }
     const whereClause = conditions.join(' AND ');
     // Get total count
@@ -178,7 +293,9 @@ async function listTransactions(context, req) {
             t.plaid_detailed_category,
             t.plaid_confidence_score,
             t.category_verified,
-            t.final_category,
+            t.manually_verified,
+            t.manual_primary_category,
+            t.manual_detailed_category,
             t.created_at,
             t.updated_at,
             a.account_name,

@@ -5,8 +5,8 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["get", "options"],
-      "route": "transactions/{id?}"
+      "methods": ["get", "put", "options"],
+      "route": "transactions/{id?}/{action?}"
     },
     {
       "type": "http",
