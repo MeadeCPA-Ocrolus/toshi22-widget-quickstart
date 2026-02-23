@@ -582,12 +582,35 @@ async function processSinglePublicToken(context, publicToken, clientId, tokenInd
         processedPlaidAccountIds.forEach((id, i) => {
             params[`id${i}`] = id;
         });
+        // First, get the account_ids that will be deselected (for transaction archiving)
+        const deselectedAccounts = await (0, database_1.executeQuery)(`SELECT account_id FROM accounts 
+             WHERE item_id = @itemId 
+               AND plaid_account_id NOT IN (${placeholders})
+               AND is_active = 1`, params);
+        const deselectedAccountIds = deselectedAccounts.recordset.map(a => a.account_id);
+        // Mark accounts as inactive
         await (0, database_1.executeQuery)(`UPDATE accounts 
              SET is_active = 0, updated_at = GETDATE()
              WHERE item_id = @itemId 
                AND plaid_account_id NOT IN (${placeholders})
                AND is_active = 1`, params);
         context.log(`${logPrefix}Marked deselected accounts as inactive for item ${itemId}`);
+        // Archive transactions for deselected accounts
+        if (deselectedAccountIds.length > 0) {
+            try {
+                await (0, database_1.executeQuery)(`UPDATE transactions 
+                     SET is_archived = 1, 
+                         archive_reason = 'account_deselected',
+                         updated_at = GETDATE()
+                     WHERE account_id IN (${deselectedAccountIds.join(',')}) 
+                       AND is_archived = 0`);
+                context.log(`${logPrefix}Archived transactions for ${deselectedAccountIds.length} deselected accounts`);
+            }
+            catch (txError) {
+                // Transactions table might not have archive columns yet
+                context.log.warn(`${logPrefix}Could not archive transactions for deselected accounts`);
+            }
+        }
     }
     // Step 7: Activate and perform initial transaction sync
     // 
