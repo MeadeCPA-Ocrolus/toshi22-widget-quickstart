@@ -290,11 +290,13 @@ const TransactionRow: React.FC<TransactionRowProps> = ({ transaction, onCategori
 interface AccountTransactionsSectionProps {
     account: Account;
     expanded: boolean;
+    liabilitiesErrorCode?: string | null;
 }
 
 const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     account,
     expanded,
+    liabilitiesErrorCode,
 }) => {
     const [transactions, setTransactions] = useState<TransactionWithDetails[]>([]);
     const [loading, setLoading] = useState(false);
@@ -474,6 +476,7 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
                     creditLiability={creditLiability}
                     studentLiability={studentLiability}
                     mortgageLiability={mortgageLiability}
+                    liabilitiesErrorCode={liabilitiesErrorCode}
                     onRefresh={loadLiability}
                 />
             )}
@@ -1324,6 +1327,7 @@ export const ClientDetail: React.FC = () => {
                                                                             <AccountTransactionsSection
                                                                                 account={account}
                                                                                 expanded={expandedAccounts.has(account.account_id)}
+                                                                                liabilitiesErrorCode={item.liabilities_error_code}
                                                                             />
                                                                         </Collapse>
                                                                     </TableCell>

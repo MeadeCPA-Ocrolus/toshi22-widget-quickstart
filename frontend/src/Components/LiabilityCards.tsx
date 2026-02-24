@@ -30,6 +30,7 @@ import {
     Home,
     AttachMoney,
     Refresh,
+    Info,
 } from '@mui/icons-material';
 import {
     CreditLiability,
@@ -483,6 +484,63 @@ export const MortgageLiabilityCard: React.FC<MortgageLiabilityCardProps> = ({ li
 // Wrapper that displays correct card based on account type
 // ============================================================================
 
+// Helper to get human-readable error message
+const getLiabilityErrorMessage = (errorCode: string | null | undefined): string => {
+    if (!errorCode) return 'Liability details are not available for this account.';
+    
+    switch (errorCode) {
+        case 'PRODUCTS_NOT_SUPPORTED':
+            return 'This bank does not support liability data through Plaid. Detailed credit card, loan, and mortgage information is not available for accounts at this institution.';
+        case 'NO_ACCOUNTS':
+            return 'No liability accounts found for this item.';
+        case 'ITEM_LOGIN_REQUIRED':
+            return 'Re-authentication required to access liability data.';
+        default:
+            return `Unable to retrieve liability data (${errorCode}).`;
+    }
+};
+
+// Component to show when liabilities are unavailable
+interface LiabilityUnavailableProps {
+    accountType: string;
+    accountSubtype: string | null;
+    errorCode?: string | null;
+}
+
+const LiabilityUnavailable: React.FC<LiabilityUnavailableProps> = ({ 
+    accountType, 
+    accountSubtype,
+    errorCode 
+}) => {
+    // Determine what type of liability this account should have
+    let liabilityType = '';
+    if (accountType === 'credit') {
+        liabilityType = 'Credit Card';
+    } else if (accountType === 'loan' && accountSubtype === 'student') {
+        liabilityType = 'Student Loan';
+    } else if (accountType === 'loan' && accountSubtype === 'mortgage') {
+        liabilityType = 'Mortgage';
+    }
+
+    if (!liabilityType) return null;
+
+    return (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.100', borderStyle: 'dashed' }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                <Info sx={{ color: 'text.secondary', mt: 0.25 }} />
+                <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        {liabilityType} Details Unavailable
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        {getLiabilityErrorMessage(errorCode)}
+                    </Typography>
+                </Box>
+            </Box>
+        </Paper>
+    );
+};
+
 interface LiabilityCardProps {
     accountType: string;
     accountSubtype: string | null;
@@ -490,6 +548,7 @@ interface LiabilityCardProps {
     creditLiability?: CreditLiability | null;
     studentLiability?: StudentLiability | null;
     mortgageLiability?: MortgageLiability | null;
+    liabilitiesErrorCode?: string | null;
     onRefresh?: () => void;
 }
 
@@ -499,6 +558,7 @@ export const LiabilityCard: React.FC<LiabilityCardProps> = ({
     creditLiability,
     studentLiability,
     mortgageLiability,
+    liabilitiesErrorCode,
     onRefresh,
 }) => {
     // Credit card
@@ -506,7 +566,8 @@ export const LiabilityCard: React.FC<LiabilityCardProps> = ({
         if (creditLiability) {
             return <CreditLiabilityCard liability={creditLiability} onRefresh={onRefresh} />;
         }
-        return null;
+        // Show unavailable message if there's an error or no data
+        return <LiabilityUnavailable accountType={accountType} accountSubtype={accountSubtype} errorCode={liabilitiesErrorCode} />;
     }
 
     // Student loan
@@ -514,7 +575,7 @@ export const LiabilityCard: React.FC<LiabilityCardProps> = ({
         if (studentLiability) {
             return <StudentLiabilityCard liability={studentLiability} onRefresh={onRefresh} />;
         }
-        return null;
+        return <LiabilityUnavailable accountType={accountType} accountSubtype={accountSubtype} errorCode={liabilitiesErrorCode} />;
     }
 
     // Mortgage
@@ -522,7 +583,7 @@ export const LiabilityCard: React.FC<LiabilityCardProps> = ({
         if (mortgageLiability) {
             return <MortgageLiabilityCard liability={mortgageLiability} onRefresh={onRefresh} />;
         }
-        return null;
+        return <LiabilityUnavailable accountType={accountType} accountSubtype={accountSubtype} errorCode={liabilitiesErrorCode} />;
     }
 
     return null;

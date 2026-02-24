@@ -47,16 +47,26 @@ async function syncLiabilitiesForItem(plaidClient, itemId, accessToken, context)
             result.mortgage = await processMortgages(liabilities.mortgage, accountMap, itemId, context);
         }
         // 4. Update item's last sync time
-        await (0, database_1.executeQuery)(`UPDATE items SET liabilities_last_successful_update = GETDATE(), updated_at = GETDATE() WHERE item_id = @itemId`, { itemId });
+        await (0, database_1.executeQuery)(`UPDATE items SET liabilities_last_successful_update = GETDATE(), liabilities_error_code = NULL, updated_at = GETDATE() WHERE item_id = @itemId`, { itemId });
         result.success = true;
         context.log(`Liabilities sync complete for item ${itemId}`);
     }
     catch (err) {
         context.log.error(`Liabilities sync failed for item ${itemId}:`, err);
-        result.error = err.message || 'Unknown error';
-        // Check for specific Plaid errors
-        if (err.response?.data?.error_code === 'PRODUCTS_NOT_SUPPORTED') {
-            result.error = 'Liabilities product not supported for this institution';
+        // Extract Plaid error details
+        const plaidErrorCode = err.response?.data?.error_code;
+        if (plaidErrorCode === 'PRODUCTS_NOT_SUPPORTED') {
+            result.error = 'PRODUCTS_NOT_SUPPORTED';
+            // Store error on item so frontend knows liabilities aren't available
+            await (0, database_1.executeQuery)(`UPDATE items SET liabilities_error_code = @errorCode, updated_at = GETDATE() WHERE item_id = @itemId`, { itemId, errorCode: 'PRODUCTS_NOT_SUPPORTED' });
+            context.log(`Liabilities sync: Institution does not support liabilities product`);
+        }
+        else {
+            result.error = plaidErrorCode || err.message || 'Unknown error';
+            // Store other errors too
+            if (plaidErrorCode) {
+                await (0, database_1.executeQuery)(`UPDATE items SET liabilities_error_code = @errorCode, updated_at = GETDATE() WHERE item_id = @itemId`, { itemId, errorCode: plaidErrorCode });
+            }
         }
     }
     return result;

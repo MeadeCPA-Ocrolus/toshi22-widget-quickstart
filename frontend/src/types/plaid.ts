@@ -53,6 +53,7 @@ export interface Item {
     transactions_cursor_last_updated: string | null;
     transactions_last_successful_update: string | null;
     has_sync_updates: boolean;
+    liabilities_error_code: string | null; 
     created_at: string;
     updated_at: string;
     is_archived: boolean;
