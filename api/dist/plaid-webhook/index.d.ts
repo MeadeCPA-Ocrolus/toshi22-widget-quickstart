@@ -6,6 +6,7 @@
  *   - SUPPORTS MULTI-ITEM: Loops through public_tokens[] array
  * - ITEM webhooks: Update item status (including ERROR with ITEM_LOGIN_REQUIRED)
  * - TRANSACTIONS webhooks: Set sync flag (only when historical_update_complete=true for new items)
+ * - LIABILITIES webhooks: Sync liability data automatically
  * - USER_ACCOUNT_REVOKED: Mark specific account as inactive
  *
  * Endpoint: POST /api/plaid/webhook

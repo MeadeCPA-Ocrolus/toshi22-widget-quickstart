@@ -1,119 +1,218 @@
 /**
- * StatusBadge Components
+ * Status Badge Components
+ * 
+ * Reusable badge components for displaying item/account status
+ * 
  * @module Components/StatusBadge
  */
 
 import React from 'react';
-import { Chip, ChipProps, Tooltip } from '@mui/material';
-import { CheckCircle, Error as ErrorIcon, Warning, Refresh, AccountBalance, Lock, AccessTime} from '@mui/icons-material';
+import { Chip, Tooltip, Box, Typography } from '@mui/material';
+import {
+    CheckCircle,
+    Warning,
+    Error,
+    LockReset,
+    Sync,
+    Schedule,
+    NewReleases,
+} from '@mui/icons-material';
 import { ItemStatus } from '../types/plaid';
 
-interface StatusConfig {
-    label: string;
-    color: ChipProps['color'];
-    icon: React.ReactElement;
-    description: string;
-    action?: string;
-}
-
-const STATUS_CONFIG: Record<ItemStatus, StatusConfig> = {
-    active: { label: 'Active', color: 'success', icon: <CheckCircle sx={{ fontSize: 16 }} />, description: 'Bank connection is healthy and working' },
-    login_required: { label: 'Login Required', color: 'error', icon: <Lock sx={{ fontSize: 16 }} />, description: 'Client needs to re-authenticate with their bank', action: 'Send update link to client' },
-    needs_update: { label: 'Needs Update', color: 'warning', icon: <Warning sx={{ fontSize: 16 }} />, description: 'New accounts available or consent expiring soon', action: 'Send update link to add new accounts' },
-    error: { label: 'Error', color: 'error', icon: <ErrorIcon sx={{ fontSize: 16 }} />, description: 'An error occurred with this bank connection', action: 'Investigate error and consider re-connecting' },
-};
+// ============================================================================
+// Item Status Badge
+// ============================================================================
 
 interface StatusBadgeProps {
     status: ItemStatus;
-    size?: 'small' | 'medium';
-    showIcon?: boolean;
-    showTooltip?: boolean;
+    errorCode?: string | null;
+    errorMessage?: string | null;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small', showIcon = true, showTooltip = true }) => {
-    const config = STATUS_CONFIG[status] || STATUS_CONFIG.error;
-    const chip = (
-        <Chip
-            label={config.label}
-            color={config.color}
-            size={size}
-            icon={showIcon ? config.icon : undefined}
-            variant="outlined"
-            sx={{ fontWeight: 500, fontSize: size === 'small' ? '0.75rem' : '0.875rem', '& .MuiChip-icon': { marginLeft: '6px' } }}
-        />
-    );
-    if (!showTooltip) return chip;
-    return (
-        <Tooltip title={<><strong>{config.description}</strong>{config.action && <><br /><em>Action: {config.action}</em></>}</>} arrow placement="top">
-            {chip}
-        </Tooltip>
-    );
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ 
+    status, 
+    errorCode, 
+    errorMessage 
+}) => {
+    switch (status) {
+        case 'active':
+            return null; // Don't show badge for active items
+
+        case 'login_required':
+            return (
+                <Tooltip title={errorMessage || "Client needs to re-authenticate with their bank"}>
+                    <Chip
+                        icon={<LockReset />}
+                        label={errorCode ? `Login Required (${errorCode})` : "Login Required"}
+                        color="error"
+                        size="small"
+                        variant="outlined"
+                    />
+                </Tooltip>
+            );
+
+        case 'needs_update':
+            // Show specific error code if available
+            const updateLabel = errorCode 
+                ? `Update Needed: ${errorCode}` 
+                : "Needs Update";
+            const updateTooltip = errorMessage 
+                ? `${errorCode || 'Error'}: ${errorMessage}`
+                : errorCode 
+                    ? `Error code: ${errorCode}. Client may need to re-connect.`
+                    : "Bank connection needs attention";
+            return (
+                <Tooltip title={updateTooltip}>
+                    <Chip
+                        icon={<Warning />}
+                        label={updateLabel}
+                        color="warning"
+                        size="small"
+                        variant="outlined"
+                    />
+                </Tooltip>
+            );
+
+        case 'error':
+            return (
+                <Tooltip title={errorMessage || errorCode || "An error occurred with this connection"}>
+                    <Chip
+                        icon={<Error />}
+                        label={errorCode ? `Error: ${errorCode}` : "Error"}
+                        color="error"
+                        size="small"
+                    />
+                </Tooltip>
+            );
+
+        default:
+            return null;
+    }
 };
+
+// ============================================================================
+// Sync Status Badge
+// ============================================================================
 
 interface SyncBadgeProps {
     hasSyncUpdates: boolean;
     lastSyncDate?: string | null;
-    size?: 'small' | 'medium';
 }
 
-export const SyncBadge: React.FC<SyncBadgeProps> = ({ hasSyncUpdates, lastSyncDate, size = 'small' }) => {
+export const SyncBadge: React.FC<SyncBadgeProps> = ({ hasSyncUpdates, lastSyncDate }) => {
     if (!hasSyncUpdates) return null;
-    const tooltipText = lastSyncDate ? `New transactions available since ${new Date(lastSyncDate).toLocaleDateString()}` : 'New transactions available for sync';
+
     return (
-        <Tooltip title={tooltipText} arrow placement="top">
+        <Tooltip title="New transactions available - click Sync to fetch">
             <Chip
+                icon={<Sync />}
                 label="Sync Available"
                 color="info"
-                size={size}
-                icon={<Refresh sx={{ fontSize: 16 }} />}
-                variant="filled"
-                sx={{ fontWeight: 500, fontSize: size === 'small' ? '0.75rem' : '0.875rem', animation: 'pulse 2s infinite', '@keyframes pulse': { '0%': { opacity: 1 }, '50%': { opacity: 0.7 }, '100%': { opacity: 1 } } }}
+                size="small"
+                variant="outlined"
             />
         </Tooltip>
     );
 };
 
+// ============================================================================
+// Consent Expiration Badge
+// ============================================================================
+
 interface ConsentExpirationBadgeProps {
-    expirationDate: string | null;
-    warningDays?: number;
-    size?: 'small' | 'medium';
+    expirationDate?: string | null;
 }
 
-export const ConsentExpirationBadge: React.FC<ConsentExpirationBadgeProps> = ({ expirationDate, warningDays = 30, size = 'small' }) => {
+export const ConsentExpirationBadge: React.FC<ConsentExpirationBadgeProps> = ({ expirationDate }) => {
     if (!expirationDate) return null;
+
     const expDate = new Date(expirationDate);
     const now = new Date();
     const daysUntilExpiration = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysUntilExpiration > warningDays) return null;
 
-    const isExpired = daysUntilExpiration <= 0;
-    const isCritical = daysUntilExpiration <= 7;
-    const isWarning = daysUntilExpiration <= 14;
+    // Only show if expiring within 30 days
+    if (daysUntilExpiration > 30) return null;
 
-    let label: string;
-    let color: ChipProps['color'];
-    if (isExpired) { label = 'Consent Expired'; color = 'error'; }
-    else if (isCritical) { label = `Expires in ${daysUntilExpiration} day${daysUntilExpiration !== 1 ? 's' : ''}`; color = 'error'; }
-    else if (isWarning) { label = `Expires in ${daysUntilExpiration} days`; color = 'warning'; }
-    else { label = `Expires in ${daysUntilExpiration} days`; color = 'info'; }
+    if (daysUntilExpiration <= 0) {
+        return (
+            <Tooltip title="Bank consent has expired - client needs to re-authenticate">
+                <Chip
+                    icon={<Error />}
+                    label="Consent Expired"
+                    color="error"
+                    size="small"
+                />
+            </Tooltip>
+        );
+    }
 
     return (
-        <Tooltip title={`Bank consent expires on ${expDate.toLocaleDateString()}. Send an update link to renew.`} arrow placement="top">
-            <Chip label={label} color={color} size={size} icon={<AccessTime sx={{ fontSize: 16 }} />} variant="outlined" sx={{ fontWeight: 500, fontSize: size === 'small' ? '0.75rem' : '0.875rem' }} />
+        <Tooltip title={`Bank consent expires in ${daysUntilExpiration} days - send update link soon`}>
+            <Chip
+                icon={<Schedule />}
+                label={`Expires in ${daysUntilExpiration}d`}
+                color="warning"
+                size="small"
+                variant="outlined"
+            />
         </Tooltip>
     );
 };
 
+// ============================================================================
+// Account Type Badge
+// ============================================================================
+
 interface AccountTypeBadgeProps {
     accountType: string;
-    accountSubtype?: string | null;
-    size?: 'small' | 'medium';
+    accountSubtype: string | null;
 }
 
-export const AccountTypeBadge: React.FC<AccountTypeBadgeProps> = ({ accountType, accountSubtype, size = 'small' }) => {
-    const typeColors: Record<string, ChipProps['color']> = { depository: 'success', credit: 'warning', loan: 'error', investment: 'info', other: 'default' };
-    const label = accountSubtype ? `${accountSubtype.charAt(0).toUpperCase()}${accountSubtype.slice(1)}` : `${accountType.charAt(0).toUpperCase()}${accountType.slice(1)}`;
-    return <Chip label={label} color={typeColors[accountType] || 'default'} size={size} icon={<AccountBalance sx={{ fontSize: 14 }} />} variant="outlined" sx={{ fontWeight: 500, fontSize: size === 'small' ? '0.7rem' : '0.8rem' }} />;
+const typeColors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
+    depository: 'primary',
+    credit: 'warning',
+    loan: 'info',
+    investment: 'success',
+    brokerage: 'success',
+    other: 'default',
 };
 
-export default StatusBadge;
+export const AccountTypeBadge: React.FC<AccountTypeBadgeProps> = ({ accountType, accountSubtype }) => {
+    const color = typeColors[accountType] || 'default';
+    const label = accountSubtype 
+        ? accountSubtype.charAt(0).toUpperCase() + accountSubtype.slice(1)
+        : accountType.charAt(0).toUpperCase() + accountType.slice(1);
+
+    return (
+        <Chip
+            label={label}
+            color={color}
+            size="small"
+            variant="outlined"
+        />
+    );
+};
+
+// ============================================================================
+// New Accounts Available Badge
+// ============================================================================
+
+interface NewAccountsBadgeProps {
+    hasNewAccounts: boolean;
+}
+
+export const NewAccountsBadge: React.FC<NewAccountsBadgeProps> = ({ hasNewAccounts }) => {
+    if (!hasNewAccounts) return null;
+
+    return (
+        <Tooltip title="New accounts detected - send update link to add them">
+            <Chip
+                icon={<NewReleases />}
+                label="New Accounts"
+                color="info"
+                size="small"
+                variant="outlined"
+            />
+        </Tooltip>
+    );
+};

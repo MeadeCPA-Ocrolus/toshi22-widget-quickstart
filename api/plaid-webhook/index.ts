@@ -6,6 +6,7 @@
  *   - SUPPORTS MULTI-ITEM: Loops through public_tokens[] array
  * - ITEM webhooks: Update item status (including ERROR with ITEM_LOGIN_REQUIRED)
  * - TRANSACTIONS webhooks: Set sync flag (only when historical_update_complete=true for new items)
+ * - LIABILITIES webhooks: Sync liability data automatically
  * - USER_ACCOUNT_REVOKED: Mark specific account as inactive
  * 
  * Endpoint: POST /api/plaid/webhook
@@ -14,9 +15,16 @@
  */
 
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
+import { PlaidApi } from 'plaid';
 import { executeQuery } from '../shared/database';
 import { encrypt, decrypt } from '../shared/encryption';
 import { exchangePublicToken, getItem, getAccounts, getPlaidClient } from '../shared/plaid-client';
+import { syncTransactionsForItem } from '../shared/transaction-sync-service';
+import { 
+    syncLiabilitiesForItem, 
+    archiveLiabilitiesForItem, 
+    archiveLiabilitiesForAccounts 
+} from '../shared/liabilities-sync-service';
 
 // OAuth institutions - these use OAuth flow instead of credential-based
 // This list is not exhaustive but covers major OAuth banks
@@ -247,40 +255,35 @@ async function updateItemStatus(
             if (itemLookup.recordset.length > 0) {
                 const internalItemId = itemLookup.recordset[0].item_id;
                 
-                // Archive all transactions for this item (excludes from financial calculations)
-                // Uses stored procedure if available, falls back to direct update
+                // Archive all accounts for this item
+                await executeQuery(
+                    `UPDATE accounts 
+                     SET is_active = 0, updated_at = GETDATE()
+                     WHERE item_id = @itemId`,
+                    { itemId: internalItemId }
+                );
+                
+                // Archive transactions
                 try {
                     await executeQuery(
-                        `EXEC sp_archive_item_transactions @item_id = @itemId, @reason = 'item_archived'`,
+                        `UPDATE t
+                         SET t.is_archived = 1, t.archived_at = GETDATE(), t.archive_reason = 'item_archived'
+                         FROM transactions t
+                         JOIN accounts a ON t.account_id = a.account_id
+                         WHERE a.item_id = @itemId AND t.is_archived = 0`,
                         { itemId: internalItemId }
                     );
                     context.log(`Archived transactions for item ${internalItemId}`);
-                } catch (spError) {
-                    // Stored procedure might not exist yet, fall back to direct update
-                    context.log.warn(`sp_archive_item_transactions not available, using direct update`);
-                    
-                    // Mark all accounts for this item as inactive
-                    await executeQuery(
-                        `UPDATE accounts 
-                         SET is_active = 0, updated_at = GETDATE()
-                         WHERE item_id = @itemId`,
-                        { itemId: internalItemId }
-                    );
-                    
-                    // Archive transactions if the column exists
-                    try {
-                        await executeQuery(
-                            `UPDATE t
-                             SET t.is_archived = 1, t.archived_at = GETDATE(), t.archive_reason = 'item_archived'
-                             FROM transactions t
-                             JOIN accounts a ON t.account_id = a.account_id
-                             WHERE a.item_id = @itemId AND t.is_archived = 0`,
-                            { itemId: internalItemId }
-                        );
-                    } catch (txnError) {
-                        // is_archived column might not exist yet
-                        context.log.warn(`Could not archive transactions (column may not exist yet)`);
-                    }
+                } catch (txnError) {
+                    context.log.warn(`Could not archive transactions: ${txnError}`);
+                }
+                
+                // Archive liabilities
+                try {
+                    await archiveLiabilitiesForItem(internalItemId, 'item_archived');
+                    context.log(`Archived liabilities for item ${internalItemId}`);
+                } catch (liabError) {
+                    context.log.warn(`Could not archive liabilities: ${liabError}`);
                 }
             }
             break;
@@ -366,6 +369,65 @@ async function updateItemStatus(
 }
 
 /**
+ * Handle LIABILITIES webhook - sync immediately on DEFAULT_UPDATE
+ */
+async function handleLiabilitiesWebhook(
+    context: Context,
+    webhook: PlaidWebhook,
+    plaidClient: PlaidApi
+): Promise<void> {
+    const plaidItemId = webhook.item_id;
+    
+    if (!plaidItemId) {
+        context.log.warn('LIABILITIES webhook missing item_id');
+        return;
+    }
+    
+    context.log(`Liabilities webhook: ${webhook.webhook_code} for item ${plaidItemId}`);
+    
+    // Get internal item_id and access_token
+    const itemResult = await executeQuery<{ item_id: number; access_token: Buffer; access_token_key_id: number }>(
+        `SELECT item_id, access_token, access_token_key_id 
+         FROM items WHERE plaid_item_id = @plaidItemId AND is_archived = 0`,
+        { plaidItemId }
+    );
+    
+    if (itemResult.recordset.length === 0) {
+        context.log.warn(`No item found for plaid_item_id: ${plaidItemId}`);
+        return;
+    }
+    
+    const item = itemResult.recordset[0];
+    
+    switch (webhook.webhook_code) {
+        case 'DEFAULT_UPDATE':
+            // Liabilities data has been updated - sync immediately
+            context.log(`Liabilities updated for item ${item.item_id}, syncing...`);
+            
+            // Decrypt access token
+            const accessToken = await decrypt(item.access_token, item.access_token_key_id);
+            
+            // Sync liabilities
+            const result = await syncLiabilitiesForItem(
+                plaidClient,
+                item.item_id,
+                accessToken,
+                context
+            );
+            
+            if (result.success) {
+                context.log(`Liabilities sync complete: credit=${result.credit.added}+${result.credit.updated}, student=${result.student.added}+${result.student.updated}, mortgage=${result.mortgage.added}+${result.mortgage.updated}`);
+            } else {
+                context.log.error(`Liabilities sync failed: ${result.error}`);
+            }
+            break;
+            
+        default:
+            context.log(`Unhandled liabilities webhook code: ${webhook.webhook_code}`);
+    }
+}
+
+/**
  * Handle USER_ACCOUNT_REVOKED webhook
  * This is for when a user revokes access to a SINGLE account, not the whole item
  */
@@ -380,6 +442,12 @@ async function handleAccountRevoked(
 
     context.log(`Account ${webhook.account_id} permissions revoked by user`);
 
+    // Get account_id before marking inactive
+    const accountResult = await executeQuery<{ account_id: number }>(
+        `SELECT account_id FROM accounts WHERE plaid_account_id = @plaidAccountId`,
+        { plaidAccountId: webhook.account_id }
+    );
+
     // Mark the specific account as inactive
     await executeQuery(
         `UPDATE accounts 
@@ -389,6 +457,17 @@ async function handleAccountRevoked(
     );
 
     context.log(`Marked account ${webhook.account_id} as inactive`);
+    
+    // Archive liabilities for this account
+    if (accountResult.recordset.length > 0) {
+        const accountId = accountResult.recordset[0].account_id;
+        try {
+            await archiveLiabilitiesForAccounts([accountId], 'account_revoked');
+            context.log(`Archived liabilities for account ${accountId}`);
+        } catch (err) {
+            context.log.warn(`Could not archive liabilities for account: ${err}`);
+        }
+    }
 }
 
 /**
@@ -518,6 +597,8 @@ async function processSinglePublicToken(
                  status = 'active',
                  is_archived = 0,
                  is_oauth = @isOAuth,
+                 transactions_cursor = NULL,
+                 transactions_cursor_last_updated = NULL,
                  last_error_code = NULL,
                  last_error_message = NULL,
                  last_error_timestamp = NULL,
@@ -530,7 +611,7 @@ async function processSinglePublicToken(
                 itemId,
             }
         );
-        context.log(`${logPrefix}Updated item ${itemId} - cleared errors, set status to active, unarchived`);
+        context.log(`${logPrefix}Updated item ${itemId} - cleared errors, set status to active, unarchived, cleared cursor`);
         
     } else if (existingActiveItemByInstitution.recordset.length > 0) {
         // Case B: DUPLICATE PREVENTION
@@ -733,7 +814,7 @@ async function processSinglePublicToken(
             params[`id${i}`] = id;
         });
         
-        // First, get the account_ids that will be deselected (for transaction archiving)
+        // First, get the account_ids that will be deselected (for transaction/liability archiving)
         const deselectedAccounts = await executeQuery<{ account_id: number }>(
             `SELECT account_id FROM accounts 
              WHERE item_id = @itemId 
@@ -760,6 +841,7 @@ async function processSinglePublicToken(
                 await executeQuery(
                     `UPDATE transactions 
                      SET is_archived = 1, 
+                         archived_at = GETDATE(),
                          archive_reason = 'account_deselected',
                          updated_at = GETDATE()
                      WHERE account_id IN (${deselectedAccountIds.join(',')}) 
@@ -767,30 +849,22 @@ async function processSinglePublicToken(
                 );
                 context.log(`${logPrefix}Archived transactions for ${deselectedAccountIds.length} deselected accounts`);
             } catch (txError) {
-                // Transactions table might not have archive columns yet
                 context.log.warn(`${logPrefix}Could not archive transactions for deselected accounts`);
+            }
+            
+            // Archive liabilities for deselected accounts
+            try {
+                await archiveLiabilitiesForAccounts(deselectedAccountIds, 'account_deselected');
+                context.log(`${logPrefix}Archived liabilities for ${deselectedAccountIds.length} deselected accounts`);
+            } catch (liabError) {
+                context.log.warn(`${logPrefix}Could not archive liabilities for deselected accounts`);
             }
         }
     }
 
-    // Step 7: Activate and perform initial transaction sync
-    // 
-    // Per Plaid docs: "Call the /transactions/sync wrapper you created in order to 
-    // activate the Item for the SYNC_UPDATES_AVAILABLE webhook."
-    //
-    // We use syncTransactionsForItem which:
-    // 1. Calls Plaid's /transactions/sync API
-    // 2. Handles pagination (fetches all pages)
-    // 3. Saves transactions to the database
-    // 4. Saves the cursor for future syncs
-    //
-    // Note: Initial sync may return transactions immediately or be empty
-    // (Plaid may still be fetching historical data in the background)
+    // Step 7: Perform initial transaction sync
     try {
         context.log(`${logPrefix}Performing initial transaction sync for item ${itemId}...`);
-        
-        // Import and call the sync service
-        const { syncTransactionsForItem } = await import('../shared/transaction-sync-service');
         const syncResult = await syncTransactionsForItem(context, itemId);
         
         if (syncResult.success) {
@@ -802,8 +876,27 @@ async function processSinglePublicToken(
             context.log.warn(`${logPrefix}Initial sync returned error: ${syncResult.error}`);
         }
     } catch (syncErr) {
-        // Log but don't fail - webhooks will still work, CPA can trigger sync later
         context.log.warn(`${logPrefix}Could not perform initial transaction sync (non-fatal): ${syncErr}`);
+    }
+
+    // Step 8: Perform initial liabilities sync
+    try {
+        context.log(`${logPrefix}Performing initial liabilities sync for item ${itemId}...`);
+        const plaidClient = getPlaidClient();
+        const liabilitiesResult = await syncLiabilitiesForItem(plaidClient, itemId, accessToken, context);
+        
+        if (liabilitiesResult.success) {
+            context.log(
+                `${logPrefix}Initial liabilities sync complete: ` +
+                `credit=${liabilitiesResult.credit.added}, student=${liabilitiesResult.student.added}, mortgage=${liabilitiesResult.mortgage.added}`
+            );
+        } else {
+            // Liabilities might not be available for all institutions - this is normal
+            context.log.warn(`${logPrefix}Liabilities sync: ${liabilitiesResult.error}`);
+        }
+    } catch (liabErr) {
+        // Non-fatal - liabilities product might not be enabled or supported
+        context.log.warn(`${logPrefix}Could not perform initial liabilities sync (non-fatal): ${liabErr}`);
     }
 
     return { itemId, plaidItemId, institutionName, isDuplicate, isOAuth };
@@ -1179,6 +1272,12 @@ const httpTrigger: AzureFunction = async function (
                 }
                 // Note: Other TRANSACTIONS webhooks (INITIAL_UPDATE, HISTORICAL_UPDATE, etc.)
                 // are deprecated in favor of SYNC_UPDATES_AVAILABLE
+            }
+
+            if (webhook.webhook_type === 'LIABILITIES') {
+                // Handle liabilities webhooks - sync immediately
+                const plaidClient = getPlaidClient();
+                await handleLiabilitiesWebhook(context, webhook, plaidClient);
             }
 
             if (webhook.webhook_type === 'LINK') {

@@ -101,6 +101,15 @@ import {
 import { SendLinkDialog } from '../Components/SendLinkDialog';
 import { CategorySelector } from '../Components/CategorySelector';
 import { getCategoryDisplay } from '../constants/plaidCategories';
+import { LiabilityCard } from '../Components/LiabilityCards';
+import { CreditLiability, StudentLiability, MortgageLiability } from '../types/liabilities';
+import {
+    getCreditLiabilityForAccount,
+    getStudentLiabilityForAccount,
+    getMortgageLiabilityForAccount,
+    hasLiabilityData,
+    getLiabilityType,
+} from '../services/liabilities-api';
 
 // ============================================================================
 // Transaction Row Component
@@ -293,6 +302,12 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [total, setTotal] = useState(0);
     
+    // Liability state
+    const [creditLiability, setCreditLiability] = useState<CreditLiability | null>(null);
+    const [studentLiability, setStudentLiability] = useState<StudentLiability | null>(null);
+    const [mortgageLiability, setMortgageLiability] = useState<MortgageLiability | null>(null);
+    const [liabilityLoading, setLiabilityLoading] = useState(false);
+    
     // Categorization dialog state
     const [categorizeDialogOpen, setCategorizeDialogOpen] = useState(false);
     const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithDetails | null>(null);
@@ -303,10 +318,16 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
     const [pendingTransaction, setPendingTransaction] = useState<TransactionWithDetails | null>(null);
 
-    // Load transactions when expanded for the first time
+    // Check if account has liability data
+    const hasLiability = hasLiabilityData(account.account_type, account.account_subtype);
+
+    // Load transactions and liabilities when expanded for the first time
     useEffect(() => {
         if (expanded && !loaded) {
             loadTransactions();
+            if (hasLiability) {
+                loadLiability();
+            }
         }
     }, [expanded, loaded]);
 
@@ -322,6 +343,28 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
             setError(err instanceof Error ? err.message : 'Failed to load transactions');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const loadLiability = async () => {
+        setLiabilityLoading(true);
+        try {
+            const liabilityType = getLiabilityType(account.account_type, account.account_subtype);
+            if (liabilityType === 'credit') {
+                const liability = await getCreditLiabilityForAccount(account.account_id);
+                setCreditLiability(liability);
+            } else if (liabilityType === 'student') {
+                const liability = await getStudentLiabilityForAccount(account.account_id);
+                setStudentLiability(liability);
+            } else if (liabilityType === 'mortgage') {
+                const liability = await getMortgageLiabilityForAccount(account.account_id);
+                setMortgageLiability(liability);
+            }
+        } catch (err) {
+            // Liability data might not be available, don't show error
+            console.warn('Could not load liability data:', err);
+        } finally {
+            setLiabilityLoading(false);
         }
     };
 
@@ -421,7 +464,24 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     };
 
     return (
-        <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
+        <Box sx={{ pl: 4, pr: 2, pb: 2, pt: 2 }}>
+            {/* Liability Card - shown above transactions for applicable accounts */}
+            {hasLiability && !liabilityLoading && (
+                <LiabilityCard
+                    accountType={account.account_type}
+                    accountSubtype={account.account_subtype}
+                    accountId={account.account_id}
+                    creditLiability={creditLiability}
+                    studentLiability={studentLiability}
+                    mortgageLiability={mortgageLiability}
+                    onRefresh={loadLiability}
+                />
+            )}
+            
+            {liabilityLoading && (
+                <Skeleton variant="rectangular" height={120} sx={{ mb: 2, borderRadius: 1 }} />
+            )}
+
             {loading && (
                 <Box sx={{ py: 2 }}>
                     <LinearProgress />
@@ -439,11 +499,11 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
                 </Alert>
             )}
 
-            {!loading && !error && transactions.length === 0 && (
+            {!loading && !error && transactions.length === 0 && !creditLiability && !studentLiability && !mortgageLiability && (
                 <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
                     <Receipt sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
                     <Typography variant="body2" color="text.secondary">
-                        No transactions yet for this account
+                        Nothing here yet
                     </Typography>
                 </Paper>
             )}
@@ -1149,7 +1209,11 @@ export const ClientDetail: React.FC = () => {
                                             </Typography>
                                         </Box>
                                         <Stack direction="row" spacing={1} alignItems="center">
-                                            <StatusBadge status={item.status} />
+                                            <StatusBadge 
+                                                status={item.status} 
+                                                errorCode={item.last_error_code}
+                                                errorMessage={item.last_error_message}
+                                            />
                                             <SyncBadge
                                                 hasSyncUpdates={item.has_sync_updates}
                                                 lastSyncDate={item.transactions_last_successful_update}
