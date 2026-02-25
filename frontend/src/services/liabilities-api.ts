@@ -55,19 +55,17 @@ export async function getMortgageLiabilityForAccount(accountId: number): Promise
 }
 
 /**
- * Check if account has liability data
+ * Check if account MIGHT have liability data
+ * We're permissive here - if account is credit or loan type, try to load liabilities
+ * The actual data will determine if we show the card
  */
 export function hasLiabilityData(accountType: string, accountSubtype: string | null): boolean {
-    // Credit cards
-    if (accountType === 'credit' && (accountSubtype === 'credit card' || accountSubtype === 'paypal')) {
+    // Any credit account might have credit card liability data
+    if (accountType === 'credit') {
         return true;
     }
-    // Student loans
-    if (accountType === 'loan' && accountSubtype === 'student') {
-        return true;
-    }
-    // Mortgages
-    if (accountType === 'loan' && accountSubtype === 'mortgage') {
+    // Any loan account might have student loan or mortgage liability data
+    if (accountType === 'loan') {
         return true;
     }
     return false;

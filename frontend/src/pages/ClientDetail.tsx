@@ -108,7 +108,6 @@ import {
     getStudentLiabilityForAccount,
     getMortgageLiabilityForAccount,
     hasLiabilityData,
-    getLiabilityType,
 } from '../services/liabilities-api';
 
 // ============================================================================
@@ -351,16 +350,20 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     const loadLiability = async () => {
         setLiabilityLoading(true);
         try {
-            const liabilityType = getLiabilityType(account.account_type, account.account_subtype);
-            if (liabilityType === 'credit') {
+            // For credit accounts, try to load credit liability
+            // For loan accounts, try to load both student and mortgage (one will match)
+            // This handles edge cases where account type doesn't match expected liability type
+            if (account.account_type === 'credit') {
                 const liability = await getCreditLiabilityForAccount(account.account_id);
                 setCreditLiability(liability);
-            } else if (liabilityType === 'student') {
-                const liability = await getStudentLiabilityForAccount(account.account_id);
-                setStudentLiability(liability);
-            } else if (liabilityType === 'mortgage') {
-                const liability = await getMortgageLiabilityForAccount(account.account_id);
-                setMortgageLiability(liability);
+            } else if (account.account_type === 'loan') {
+                // Try both student and mortgage - the API returns data if it exists
+                const [studentLiab, mortgageLiab] = await Promise.all([
+                    getStudentLiabilityForAccount(account.account_id).catch(() => null),
+                    getMortgageLiabilityForAccount(account.account_id).catch(() => null),
+                ]);
+                setStudentLiability(studentLiab);
+                setMortgageLiability(mortgageLiab);
             }
         } catch (err) {
             // Liability data might not be available, don't show error

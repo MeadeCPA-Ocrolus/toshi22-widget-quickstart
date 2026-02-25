@@ -561,31 +561,33 @@ export const LiabilityCard: React.FC<LiabilityCardProps> = ({
     liabilitiesErrorCode,
     onRefresh,
 }) => {
-    // Credit card
+    // PRIORITY 1: If we have liability data, show it regardless of account type
+    // This handles cases where Plaid returns liability data for accounts with unexpected types
+    if (creditLiability) {
+        return <CreditLiabilityCard liability={creditLiability} onRefresh={onRefresh} />;
+    }
+    if (studentLiability) {
+        return <StudentLiabilityCard liability={studentLiability} onRefresh={onRefresh} />;
+    }
+    if (mortgageLiability) {
+        return <MortgageLiabilityCard liability={mortgageLiability} onRefresh={onRefresh} />;
+    }
+    
+    // PRIORITY 2: No liability data - show "unavailable" only for expected liability account types
+    // Credit card accounts
     if (accountType === 'credit' && (accountSubtype === 'credit card' || accountSubtype === 'paypal')) {
-        if (creditLiability) {
-            return <CreditLiabilityCard liability={creditLiability} onRefresh={onRefresh} />;
-        }
-        // Show unavailable message if there's an error or no data
         return <LiabilityUnavailable accountType={accountType} accountSubtype={accountSubtype} errorCode={liabilitiesErrorCode} />;
     }
-
-    // Student loan
+    // Student loan accounts
     if (accountType === 'loan' && accountSubtype === 'student') {
-        if (studentLiability) {
-            return <StudentLiabilityCard liability={studentLiability} onRefresh={onRefresh} />;
-        }
         return <LiabilityUnavailable accountType={accountType} accountSubtype={accountSubtype} errorCode={liabilitiesErrorCode} />;
     }
-
-    // Mortgage
+    // Mortgage accounts
     if (accountType === 'loan' && accountSubtype === 'mortgage') {
-        if (mortgageLiability) {
-            return <MortgageLiabilityCard liability={mortgageLiability} onRefresh={onRefresh} />;
-        }
         return <LiabilityUnavailable accountType={accountType} accountSubtype={accountSubtype} errorCode={liabilitiesErrorCode} />;
     }
 
+    // For other account types (checking, savings, etc.) - don't show anything
     return null;
 };
 
