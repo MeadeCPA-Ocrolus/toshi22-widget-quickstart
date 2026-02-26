@@ -194,9 +194,9 @@ const httpTrigger: AzureFunction = async function (
             `;
         }
 
-        // Query investment transactions
+        // Query investment transactions (limited to 25 most recent)
         const transactionsQuery = `
-            SELECT TOP 500
+            SELECT TOP 25
                 t.investment_transaction_id,
                 t.account_id,
                 t.security_id,
