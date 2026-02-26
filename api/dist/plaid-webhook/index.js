@@ -20,6 +20,7 @@ const encryption_1 = require("../shared/encryption");
 const plaid_client_1 = require("../shared/plaid-client");
 const transaction_sync_service_1 = require("../shared/transaction-sync-service");
 const liabilities_sync_service_1 = require("../shared/liabilities-sync-service");
+const investments_sync_service_1 = require("../shared/investments-sync-service");
 // OAuth institutions - these use OAuth flow instead of credential-based
 // This list is not exhaustive but covers major OAuth banks
 const OAUTH_INSTITUTIONS = [
@@ -194,6 +195,14 @@ async function updateItemStatus(context, webhook) {
                 catch (liabError) {
                     context.log.warn(`Could not archive liabilities: ${liabError}`);
                 }
+                // Archive investments
+                try {
+                    await (0, investments_sync_service_1.archiveInvestmentsForItem)(internalItemId, 'item_archived');
+                    context.log(`Archived investments for item ${internalItemId}`);
+                }
+                catch (invError) {
+                    context.log.warn(`Could not archive investments: ${invError}`);
+                }
             }
             break;
         case 'NEW_ACCOUNTS_AVAILABLE':
@@ -298,6 +307,85 @@ async function handleLiabilitiesWebhook(context, webhook, plaidClient) {
     }
 }
 /**
+ * Handle HOLDINGS webhook - sync holdings automatically on DEFAULT_UPDATE
+ */
+async function handleHoldingsWebhook(context, webhook, plaidClient) {
+    const plaidItemId = webhook.item_id;
+    if (!plaidItemId) {
+        context.log.warn('HOLDINGS webhook missing item_id');
+        return;
+    }
+    context.log(`Holdings webhook: ${webhook.webhook_code} for item ${plaidItemId}`);
+    // Get internal item_id and access_token
+    const itemResult = await (0, database_1.executeQuery)(`SELECT item_id, access_token, access_token_key_id 
+         FROM items WHERE plaid_item_id = @plaidItemId AND is_archived = 0`, { plaidItemId });
+    if (itemResult.recordset.length === 0) {
+        context.log.warn(`No item found for plaid_item_id: ${plaidItemId}`);
+        return;
+    }
+    const item = itemResult.recordset[0];
+    switch (webhook.webhook_code) {
+        case 'DEFAULT_UPDATE':
+            // Holdings data has been updated - sync immediately (automatic)
+            context.log(`Holdings updated for item ${item.item_id}, syncing...`);
+            // Decrypt access token
+            const accessToken = await (0, encryption_1.decrypt)(item.access_token, item.access_token_key_id);
+            // Sync holdings (includes securities)
+            const result = await (0, investments_sync_service_1.syncHoldingsOnly)(plaidClient, item.item_id, accessToken, context);
+            if (result.success) {
+                context.log(`Holdings sync complete: ` +
+                    `securities=${result.securities.added}+${result.securities.updated}, ` +
+                    `holdings=${result.holdings.added}+${result.holdings.updated}+${result.holdings.removed}`);
+            }
+            else {
+                context.log.error(`Holdings sync failed: ${result.error}`);
+            }
+            break;
+        default:
+            context.log(`Unhandled holdings webhook code: ${webhook.webhook_code}`);
+    }
+}
+/**
+ * Handle INVESTMENTS_TRANSACTIONS webhook - sync investment transactions automatically
+ */
+async function handleInvestmentTransactionsWebhook(context, webhook, plaidClient) {
+    const plaidItemId = webhook.item_id;
+    if (!plaidItemId) {
+        context.log.warn('INVESTMENTS_TRANSACTIONS webhook missing item_id');
+        return;
+    }
+    context.log(`Investment transactions webhook: ${webhook.webhook_code} for item ${plaidItemId}`);
+    // Get internal item_id and access_token
+    const itemResult = await (0, database_1.executeQuery)(`SELECT item_id, access_token, access_token_key_id 
+         FROM items WHERE plaid_item_id = @plaidItemId AND is_archived = 0`, { plaidItemId });
+    if (itemResult.recordset.length === 0) {
+        context.log.warn(`No item found for plaid_item_id: ${plaidItemId}`);
+        return;
+    }
+    const item = itemResult.recordset[0];
+    switch (webhook.webhook_code) {
+        case 'DEFAULT_UPDATE':
+        case 'HISTORICAL_UPDATE':
+            // Investment transactions are available - sync immediately (automatic)
+            context.log(`Investment transactions ${webhook.webhook_code} for item ${item.item_id}, syncing...`);
+            // Decrypt access token
+            const accessToken = await (0, encryption_1.decrypt)(item.access_token, item.access_token_key_id);
+            // Sync all investments (holdings + transactions)
+            const result = await (0, investments_sync_service_1.syncInvestmentsForItem)(plaidClient, item.item_id, accessToken, context);
+            if (result.success) {
+                context.log(`Investments sync complete: ` +
+                    `holdings=${result.holdings.added}+${result.holdings.updated}, ` +
+                    `transactions=${result.transactions.added}+${result.transactions.updated}`);
+            }
+            else {
+                context.log.error(`Investments sync failed: ${result.error}`);
+            }
+            break;
+        default:
+            context.log(`Unhandled investment transactions webhook code: ${webhook.webhook_code}`);
+    }
+}
+/**
  * Handle USER_ACCOUNT_REVOKED webhook
  * This is for when a user revokes access to a SINGLE account, not the whole item
  */
@@ -323,6 +411,14 @@ async function handleAccountRevoked(context, webhook) {
         }
         catch (err) {
             context.log.warn(`Could not archive liabilities for account: ${err}`);
+        }
+        // Archive investments for this account
+        try {
+            await (0, investments_sync_service_1.archiveInvestmentsForAccounts)([accountId], 'account_revoked');
+            context.log(`Archived investments for account ${accountId}`);
+        }
+        catch (err) {
+            context.log.warn(`Could not archive investments for account: ${err}`);
         }
     }
 }
@@ -638,22 +734,42 @@ async function processSinglePublicToken(context, publicToken, clientId, tokenInd
             catch (liabError) {
                 context.log.warn(`${logPrefix}Could not archive liabilities for deselected accounts`);
             }
+            // Archive investments for deselected accounts
+            try {
+                await (0, investments_sync_service_1.archiveInvestmentsForAccounts)(deselectedAccountIds, 'account_deselected');
+                context.log(`${logPrefix}Archived investments for ${deselectedAccountIds.length} deselected accounts`);
+            }
+            catch (invError) {
+                context.log.warn(`${logPrefix}Could not archive investments for deselected accounts`);
+            }
         }
     }
     // Step 7: Perform initial transaction sync
+    // Note: Plaid may not have transaction data ready immediately after Link completes.
+    // If we get 0 transactions, set has_sync_updates=1 so CPA can retry when ready.
     try {
         context.log(`${logPrefix}Performing initial transaction sync for item ${itemId}...`);
         const syncResult = await (0, transaction_sync_service_1.syncTransactionsForItem)(context, itemId);
         if (syncResult.success) {
             context.log(`${logPrefix}Initial sync complete: ` +
                 `${syncResult.added} added, ${syncResult.modified} modified, ${syncResult.removed} removed`);
+            // If we got 0 transactions, Plaid might not have data ready yet
+            // Set has_sync_updates=1 so CPA can try again when SYNC_UPDATES_AVAILABLE fires
+            if (syncResult.added === 0 && syncResult.modified === 0 && syncResult.isInitialSync) {
+                context.log(`${logPrefix}Initial sync returned 0 transactions - Plaid may still be processing. Setting has_sync_updates=1`);
+                await (0, database_1.executeQuery)(`UPDATE items SET has_sync_updates = 1, updated_at = GETDATE() WHERE item_id = @itemId`, { itemId });
+            }
         }
         else {
             context.log.warn(`${logPrefix}Initial sync returned error: ${syncResult.error}`);
+            // Set flag so CPA can retry
+            await (0, database_1.executeQuery)(`UPDATE items SET has_sync_updates = 1, updated_at = GETDATE() WHERE item_id = @itemId`, { itemId });
         }
     }
     catch (syncErr) {
         context.log.warn(`${logPrefix}Could not perform initial transaction sync (non-fatal): ${syncErr}`);
+        // Set flag so CPA can retry
+        await (0, database_1.executeQuery)(`UPDATE items SET has_sync_updates = 1, updated_at = GETDATE() WHERE item_id = @itemId`, { itemId });
     }
     // Step 8: Perform initial liabilities sync
     try {
@@ -672,6 +788,26 @@ async function processSinglePublicToken(context, publicToken, clientId, tokenInd
     catch (liabErr) {
         // Non-fatal - liabilities product might not be enabled or supported
         context.log.warn(`${logPrefix}Could not perform initial liabilities sync (non-fatal): ${liabErr}`);
+    }
+    // Step 9: Perform initial investments sync (holdings + investment transactions)
+    try {
+        context.log(`${logPrefix}Performing initial investments sync for item ${itemId}...`);
+        const plaidClient = (0, plaid_client_1.getPlaidClient)();
+        const investmentsResult = await (0, investments_sync_service_1.syncInvestmentsForItem)(plaidClient, itemId, accessToken, context);
+        if (investmentsResult.success) {
+            context.log(`${logPrefix}Initial investments sync complete: ` +
+                `securities=${investmentsResult.securities.added} added/${investmentsResult.securities.updated} updated, ` +
+                `holdings=${investmentsResult.holdings.added} added/${investmentsResult.holdings.updated} updated, ` +
+                `transactions=${investmentsResult.transactions.added} added`);
+        }
+        else {
+            // Investments might not be available for all institutions - this is normal
+            context.log.warn(`${logPrefix}Investments sync: ${investmentsResult.error}`);
+        }
+    }
+    catch (invErr) {
+        // Non-fatal - investments product might not be enabled or supported
+        context.log.warn(`${logPrefix}Could not perform initial investments sync (non-fatal): ${invErr}`);
     }
     return { itemId, plaidItemId, institutionName, isDuplicate, isOAuth };
 }
@@ -974,6 +1110,16 @@ const httpTrigger = async function (context, req) {
                 // Handle liabilities webhooks - sync immediately
                 const plaidClient = (0, plaid_client_1.getPlaidClient)();
                 await handleLiabilitiesWebhook(context, webhook, plaidClient);
+            }
+            if (webhook.webhook_type === 'HOLDINGS') {
+                // Handle holdings webhooks - sync immediately (automatic)
+                const plaidClient = (0, plaid_client_1.getPlaidClient)();
+                await handleHoldingsWebhook(context, webhook, plaidClient);
+            }
+            if (webhook.webhook_type === 'INVESTMENTS_TRANSACTIONS') {
+                // Handle investment transactions webhooks - sync immediately (automatic)
+                const plaidClient = (0, plaid_client_1.getPlaidClient)();
+                await handleInvestmentTransactionsWebhook(context, webhook, plaidClient);
             }
             if (webhook.webhook_type === 'LINK') {
                 if (webhook.webhook_code === 'SESSION_FINISHED') {

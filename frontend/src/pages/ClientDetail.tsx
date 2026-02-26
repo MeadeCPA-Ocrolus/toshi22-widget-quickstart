@@ -102,13 +102,16 @@ import { SendLinkDialog } from '../Components/SendLinkDialog';
 import { CategorySelector } from '../Components/CategorySelector';
 import { getCategoryDisplay } from '../constants/plaidCategories';
 import { LiabilityCard } from '../Components/LiabilityCards';
+import { InvestmentCard } from '../Components/InvestmentCards';
 import { CreditLiability, StudentLiability, MortgageLiability } from '../types/liabilities';
+import { InvestmentsResponse } from '../types/investments';
 import {
     getCreditLiabilityForAccount,
     getStudentLiabilityForAccount,
     getMortgageLiabilityForAccount,
     hasLiabilityData,
 } from '../services/liabilities-api';
+import { getInvestmentsForAccount, isInvestmentAccount } from '../services/investments-api';
 
 // ============================================================================
 // Transaction Row Component
@@ -309,6 +312,10 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
     const [mortgageLiability, setMortgageLiability] = useState<MortgageLiability | null>(null);
     const [liabilityLoading, setLiabilityLoading] = useState(false);
     
+    // Investment state
+    const [investmentsData, setInvestmentsData] = useState<InvestmentsResponse | null>(null);
+    const [investmentsLoading, setInvestmentsLoading] = useState(false);
+    
     // Categorization dialog state
     const [categorizeDialogOpen, setCategorizeDialogOpen] = useState(false);
     const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithDetails | null>(null);
@@ -321,13 +328,19 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
 
     // Check if account has liability data
     const hasLiability = hasLiabilityData(account.account_type, account.account_subtype);
+    
+    // Check if account has investment data
+    const hasInvestments = isInvestmentAccount(account.account_type);
 
-    // Load transactions and liabilities when expanded for the first time
+    // Load transactions, liabilities, and investments when expanded for the first time
     useEffect(() => {
         if (expanded && !loaded) {
             loadTransactions();
             if (hasLiability) {
                 loadLiability();
+            }
+            if (hasInvestments) {
+                loadInvestments();
             }
         }
     }, [expanded, loaded]);
@@ -370,6 +383,19 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
             console.warn('Could not load liability data:', err);
         } finally {
             setLiabilityLoading(false);
+        }
+    };
+
+    const loadInvestments = async () => {
+        setInvestmentsLoading(true);
+        try {
+            const data = await getInvestmentsForAccount(account.account_id);
+            setInvestmentsData(data);
+        } catch (err) {
+            // Investment data might not be available, don't show error
+            console.warn('Could not load investments data:', err);
+        } finally {
+            setInvestmentsLoading(false);
         }
     };
 
@@ -470,6 +496,19 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
 
     return (
         <Box sx={{ pl: 4, pr: 2, pb: 2, pt: 2 }}>
+            {/* Investment Card - shown for investment accounts */}
+            {hasInvestments && !investmentsLoading && (
+                <InvestmentCard
+                    investmentsData={investmentsData}
+                    investmentsErrorCode={null}
+                    accountType={account.account_type}
+                />
+            )}
+            
+            {investmentsLoading && (
+                <Skeleton variant="rectangular" height={200} sx={{ mb: 2, borderRadius: 1 }} />
+            )}
+
             {/* Liability Card - shown above transactions for applicable accounts */}
             {hasLiability && !liabilityLoading && (
                 <LiabilityCard
@@ -505,7 +544,7 @@ const AccountTransactionsSection: React.FC<AccountTransactionsSectionProps> = ({
                 </Alert>
             )}
 
-            {!loading && !error && transactions.length === 0 && !creditLiability && !studentLiability && !mortgageLiability && (
+            {!loading && !error && transactions.length === 0 && !creditLiability && !studentLiability && !mortgageLiability && !investmentsData && (
                 <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
                     <Receipt sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
                     <Typography variant="body2" color="text.secondary">
