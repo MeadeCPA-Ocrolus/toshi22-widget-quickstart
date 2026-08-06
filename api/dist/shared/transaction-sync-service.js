@@ -708,6 +708,16 @@ async function refreshTransactions(context, itemId) {
         const plaidError = err?.response?.data;
         const errorMessage = err instanceof Error ? err.message : String(err);
         context.log.error(`Failed to refresh transactions for item ${itemId}: ${errorMessage}`, plaidError ? JSON.stringify(plaidError) : '');
+        if (plaidError?.error_code === 'ITEM_LOGIN_REQUIRED') {
+            await (0, database_1.executeQuery)(`UPDATE items 
+                 SET status = 'login_required',
+                     last_error_code = @errorCode,
+                     last_error_message = @errorMessage,
+                     last_error_timestamp = GETDATE(),
+                     error_attempt_count = error_attempt_count + 1,
+                     updated_at = GETDATE()
+                 WHERE item_id = @itemId`, { itemId, errorCode: plaidError.error_code, errorMessage: plaidError.error_message });
+        }
         return { success: false, error: errorMessage };
     }
 }
