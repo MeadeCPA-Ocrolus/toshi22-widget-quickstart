@@ -12,7 +12,6 @@ import CssBaseline from '@mui/material/CssBaseline';
 
 import { professionalTheme } from './theme';
 import ParticlesBackground from './Components/ParticlesBackground';
-import DocumentUploadPage from './pages/DocumentUploadPage';
 import { PlaidDashboard } from './pages/PlaidDashboard';
 import LinkComplete from './pages/LinkComplete';
 
@@ -28,17 +27,13 @@ const Navigation: React.FC<NavigationProps> = ({ userInfo, onLogout }) => {
 
     const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
     const handleMenuClose = () => setAnchorEl(null);
-    const getActiveTab = () => location.pathname.startsWith('/bank') ? 1 : 0;
 
     return (
         <AppBar position="fixed" elevation={0} sx={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(232, 231, 231, 0.47)' }}>
             <Toolbar variant="dense" sx={{ minHeight: 48 }}>
                 <Box component="img" src="/images/tohsi_logo_png_trans_white.png" alt="Company Logo" sx={{ height: 40, width: 'auto', mr: 2, objectFit: 'contain' }} />
                 <Typography variant="h6" sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '1.25rem', color: 'text.primary', mr: 4 }}>Meade CPA</Typography>
-                <Tabs value={getActiveTab()} sx={{ flex: 1, '& .MuiTab-root': { minHeight: 48, textTransform: 'none', fontWeight: 500 } }}>
-                    <Tab icon={<CloudUpload sx={{ fontSize: 20 }} />} iconPosition="start" label="Document Upload" component={RouterLink} to="/" />
-                    <Tab icon={<AccountBalance sx={{ fontSize: 20 }} />} iconPosition="start" label="Bank Connections" component={RouterLink} to="/bank" />
-                </Tabs>
+                <Box sx={{ flex: 1 }} />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Typography variant="body2" color="text.secondary">{userInfo?.userDetails}</Typography>
                     <IconButton onClick={handleMenuOpen} sx={{ p: 0 }}><Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}><AccountCircle /></Avatar></IconButton>
@@ -133,7 +128,7 @@ function App() {
                     <Navigation userInfo={userInfo} onLogout={handleLogout} />
                     <Box sx={{ pt: 7, minHeight: '100vh', backgroundColor: 'transparent' }}>
                         <Routes>
-                            <Route path="/" element={<DocumentUploadPage />} />
+                            <Route path="/" element={<Navigate to="/bank" replace />} />
                             <Route path="/bank/*" element={<PlaidDashboard />} />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>

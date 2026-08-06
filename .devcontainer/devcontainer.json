@@ -1,13 +1,6 @@
 {
-  "name": "Ocrolus Widget App",
+  "name": "Toshi22 Widget App",
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "remoteEnv": {
-    "OCROLUS_CLIENT_ID": "${OCROLUS_CLIENT_ID}",
-    "OCROLUS_CLIENT_SECRET": "${OCROLUS_CLIENT_SECRET}",
-    "OCROLUS_WIDGET_UUID": "${OCROLUS_WIDGET_UUID}",
-    "OCROLUS_WIDGET_ENVIRONMENT": "${OCROLUS_WIDGET_ENVIRONMENT}",
-    "APP_PORT": "${APP_PORT}"
-  },
-  "postCreateCommand": "npm install --workspaces && npm run build --workspace=frontend && npm install -g ngrok && ngrok config add-authtoken 2p05c1Atrdldz07NY0WWOLt5KWf_fLGVTghwDiiDDenVQ3iU",
-  "postStartCommand": "./start-with-ngrok.sh"
+  "postCreateCommand": "npm install --prefix frontend && npm install --prefix api && npm install -g azure-functions-core-tools@4 --unsafe-perm true"
 }
+
