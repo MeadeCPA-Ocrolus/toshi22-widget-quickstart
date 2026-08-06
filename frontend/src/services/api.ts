@@ -76,10 +76,27 @@ export async function getClient(clientId: number): Promise<{ client: Client }> {
 /**
  * Create a new client
  */
+
+/**
+ * Fields actually required/accepted by POST /api/clients — a deliberately
+ * smaller shape than Client itself, since client_uuid, is_archived, and
+ * the tax-rate fields are either server-generated or not part of creation.
+ */
+export interface CreateClientRequest {
+    first_name: string;
+    last_name: string;
+    business_name: string | null;
+    email: string;
+    phone_number: string | null;
+    account_type: Client['account_type'];
+    fiscal_year_start_date: string;
+    state: string;
+}
+
 export async function createClient(
-    client: Omit<Client, 'client_id' | 'created_at' | 'updated_at'>
-): Promise<{ client: Client; message: string }> {
-    return fetchApi<{ client: Client; message: string }>('/clients', {
+    client: CreateClientRequest
+): Promise<{ client_id: number; message: string }> {
+    return fetchApi<{ client_id: number; message: string }>('/clients', {
         method: 'POST',
         body: JSON.stringify(client),
     });

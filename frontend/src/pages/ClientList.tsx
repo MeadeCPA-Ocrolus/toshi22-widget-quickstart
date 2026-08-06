@@ -31,6 +31,7 @@ import {
 import {
     Search,
     Send,
+    PersonAdd,
     Visibility,
     AccountBalance,
     Warning,
@@ -45,6 +46,7 @@ import { useNavigate } from 'react-router-dom';
 import { Client, ClientWithAlerts } from '../types/plaid';
 import { getClients, getClientDisplayName } from '../services/api';
 import { SendLinkDialog } from '../Components/SendLinkDialog';
+import { CreateClientDialog } from '../Components/CreateClientDialog';
 
 interface AlertCount {
     total: number;
@@ -64,6 +66,7 @@ export const ClientList: React.FC = () => {
     const [showOnlyIssues, setShowOnlyIssues] = useState(false);
     const [sendLinkDialogOpen, setSendLinkDialogOpen] = useState(false);
     const [selectedClientForLink, setSelectedClientForLink] = useState<Client | null>(null);
+    const [createClientDialogOpen, setCreateClientDialogOpen] = useState(false);
 
     const fetchClients = async () => {
         setLoading(true);
@@ -185,9 +188,18 @@ export const ClientList: React.FC = () => {
                                 Manage client bank connections and view alerts
                             </Typography>
                         </Box>
-                        <Button variant="contained" startIcon={<Send />} onClick={handleSendNewLink}>
-                            Send Bank Link
-                        </Button>
+                        <Stack direction="row" spacing={1}>
+                            <Button variant="contained" startIcon={<Send />} onClick={handleSendNewLink}>
+                                Send Bank Link
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                startIcon={<PersonAdd />}
+                                onClick={() => setCreateClientDialogOpen(true)}
+                            >
+                                Add Client
+                            </Button>
+                        </Stack>
                     </Box>
                 </CardContent>
             </Card>
@@ -438,6 +450,15 @@ export const ClientList: React.FC = () => {
                 client={selectedClientForLink}
                 clients={clients}
                 onLinkCreated={handleLinkCreated}
+            />
+            {/* Create Client Dialog */}
+            <CreateClientDialog
+                open={createClientDialogOpen}
+                onClose={() => setCreateClientDialogOpen(false)}
+                 onCreated={(clientId: number) => {
+                    fetchClients();
+                    navigate(`/bank/clients/${clientId}`);
+                }}
             />
         </Box>
     );

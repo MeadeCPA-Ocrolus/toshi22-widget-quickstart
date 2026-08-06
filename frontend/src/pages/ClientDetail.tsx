@@ -86,6 +86,7 @@ import {
     deleteItem,
     getFailedLinkSessions,
     FailedLinkSession,
+    deleteClient,
 } from '../services/api';
 import {
     getTransactionsForAccount,
@@ -1063,7 +1064,7 @@ export const ClientDetail: React.FC = () => {
     return (
         <Box sx={{ p: 3 }}>
             {/* Breadcrumbs */}
-            <Paper sx={{ p: 1, px: 2, mb: 2, bgcolor: 'rgba(255, 255, 255, 0.95)' }}>
+            <Paper sx={{ p: 1, px: 2, mb: 2, bgcolor: 'rgba(255, 255, 255, 0.95)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Breadcrumbs>
                     <Link
                         component="button"
@@ -1073,10 +1074,21 @@ export const ClientDetail: React.FC = () => {
                     >
                         Clients
                     </Link>
-                    <Typography variant="body2" color="text.primary">
-                        {getClientDisplayName(client)}
+                    <Typography variant="body2" color="text.primary">                        {getClientDisplayName(client)}
                     </Typography>
                 </Breadcrumbs>
+                <Button
+                    size="small"
+                    color="error"
+                    startIcon={<Delete />}
+                    onClick={async () => {
+                        if (!window.confirm(`Delete ${getClientDisplayName(client)}? This can't be undone from the UI.`)) return;
+                        await deleteClient(client.client_id);
+                        navigate('/bank/clients');
+                    }}
+                >
+                    Delete Client
+                </Button>
             </Paper>
 
             {/* Failed Link Sessions Alert */}
@@ -1204,7 +1216,7 @@ export const ClientDetail: React.FC = () => {
             </Card>
 
             {/* Document Upload — NEW, testing before Ocrolus removal */}
-            <Card sx={{ bgcolor: 'rgba(255, 255, 255, 0.95)' }}>
+            <Card sx={{ mb: 3, bgcolor: 'rgba(255, 255, 255, 0.95)' }}>
                 <CardContent>
                     <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
                         Documents
