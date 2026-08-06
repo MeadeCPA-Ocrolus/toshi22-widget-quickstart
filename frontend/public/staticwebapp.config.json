@@ -18,6 +18,9 @@
     { "route": "/api/clients", "allowedRoles": ["anonymous"] },
     { "route": "/api/clients/*", "allowedRoles": ["anonymous"] },
     { "route": "/api/plaid/link-token", "allowedRoles": ["anonymous"] },
+    { "route": "/api/upload-url", "allowedRoles": ["anonymous"] },
+    { "route": "/api/documents", "allowedRoles": ["anonymous"] },
+    { "route": "/api/documents/*", "allowedRoles": ["anonymous"] },
     { "route": "/bank/link-complete", "allowedRoles": ["anonymous"] },
 
     { "route": "/api/*", "allowedRoles": ["authenticated"] },

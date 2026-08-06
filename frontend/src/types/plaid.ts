@@ -7,6 +7,7 @@ export type AccountType = 'sole_proprietor' | 'partnership' | 's_corp' | 'c_corp
 
 export interface Client {
     client_id: number;
+    client_uuid: string;
     first_name: string;
     last_name: string;
     business_name: string | null;

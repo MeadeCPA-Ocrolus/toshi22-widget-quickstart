@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+
 import {
     Box,
     Card,
@@ -99,6 +100,8 @@ import {
     AccountTypeBadge,
 } from '../Components/StatusBadge';
 import { SendLinkDialog } from '../Components/SendLinkDialog';
+import DocumentDropzone from '../Components/DocumentDropzone';
+import { getDocuments, DocumentRecord } from '../services/documents-api';
 import { CategorySelector } from '../Components/CategorySelector';
 import { getCategoryDisplay } from '../constants/plaidCategories';
 import { LiabilityCard } from '../Components/LiabilityCards';
@@ -804,6 +807,7 @@ export const ClientDetail: React.FC = () => {
     const [items, setItems] = useState<ItemWithAccounts[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [documents, setDocuments] = useState<DocumentRecord[]>([]);
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
     const [expandedAccounts, setExpandedAccounts] = useState<Set<number>>(new Set());
 
@@ -839,6 +843,14 @@ export const ClientDetail: React.FC = () => {
             } catch {
                 // Ignore errors for failed links
             }
+            if (response.client?.client_uuid) {
+                 try {
+                     const docs = await getDocuments(response.client.client_uuid);
+                     setDocuments(docs);
+                 } catch {
+                     // Non-fatal — don't block the rest of the page over this
+                 }
+             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load client data');
         } finally {
@@ -1188,6 +1200,52 @@ export const ClientDetail: React.FC = () => {
                             </Stack>
                         </Grid>
                     </Grid>
+                </CardContent>
+            </Card>
+
+            {/* Document Upload — NEW, testing before Ocrolus removal */}
+            <Card sx={{ bgcolor: 'rgba(255, 255, 255, 0.95)' }}>
+                <CardContent>
+                    <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                        Documents
+                    </Typography>
+
+                    {client.client_uuid ? (
+                        <>
+                            <DocumentDropzone
+                                clientUuid={client.client_uuid}
+                                onUploadComplete={fetchClientData}
+                            />
+
+                            {documents.length > 0 && (
+                                <Stack spacing={1} sx={{ mt: 2 }}>
+                                    {documents.map((doc) => (
+                                        <Box
+                                            key={doc.doc_id}
+                                            sx={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                px: 1.5,
+                                                py: 1,
+                                                borderRadius: 1,
+                                                bgcolor: 'grey.50',
+                                            }}
+                                        >
+                                            <Typography variant="body2">{doc.filename}</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {doc.tax_year} · {new Date(doc.uploaded_at).toLocaleDateString()}
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                </Stack>
+                            )}
+                        </>
+                    ) : (
+                        <Typography variant="body2" color="text.secondary">
+                            No client_uuid found for this client — refresh the page or check the migration ran.
+                        </Typography>
+                    )}
                 </CardContent>
             </Card>
 
