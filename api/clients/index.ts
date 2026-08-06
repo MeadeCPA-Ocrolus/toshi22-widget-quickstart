@@ -15,6 +15,7 @@
  * @module clients
  */
 
+import { randomUUID } from 'crypto';
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 
@@ -23,6 +24,7 @@ import { executeQuery } from '../shared/database';
  */
 interface ClientRecord {
     client_id: number;
+    client_uuid: string;
     first_name: string;
     last_name: string;
     business_name: string | null;
@@ -192,6 +194,7 @@ async function listClients(context: Context, req: HttpRequest): Promise<void> {
     let query = `
         SELECT 
             c.client_id,
+            c.client_uuid,
             c.first_name,
             c.last_name,
             c.business_name,
@@ -264,6 +267,7 @@ async function getClient(context: Context, clientId: number): Promise<void> {
     const result = await executeQuery<ClientRecord>(
         `SELECT 
             client_id,
+            client_uuid,
             first_name,
             last_name,
             business_name,
@@ -355,17 +359,20 @@ async function createClient(context: Context, body: any): Promise<void> {
     }
 
     // Insert client
-    const insertResult = await executeQuery<{ client_id: number }>(
+    const clientUuid = randomUUID();
+
+    const insertResult = await executeQuery<{ client_id: number; client_uuid: string }>(
         `INSERT INTO clients (
-            first_name, last_name, business_name, email, phone_number,
+            client_uuid, first_name, last_name, business_name, email, phone_number,
             account_type, fiscal_year_start_date, state
         )
-        OUTPUT INSERTED.client_id
+        OUTPUT INSERTED.client_id, INSERTED.client_uuid
         VALUES (
-            @firstName, @lastName, @businessName, @email, @phoneNumber,
+            @clientUuid, @firstName, @lastName, @businessName, @email, @phoneNumber,
             @accountType, @fiscalYearStartDate, @state
         )`,
         {
+            clientUuid,
             firstName: body.first_name.trim(),
             lastName: body.last_name.trim(),
             businessName: body.business_name?.trim() || null,
@@ -378,12 +385,14 @@ async function createClient(context: Context, body: any): Promise<void> {
     );
 
     const newClientId = insertResult.recordset[0].client_id;
-    context.log(`Created client: ${newClientId}`);
+    const newClientUuid = insertResult.recordset[0].client_uuid;
++   context.log(`Created client: ${newClientId} (${newClientUuid})`);
 
     context.res = {
         status: 201,
         body: {
             client_id: newClientId,
+            client_uuid: newClientUuid,
             message: 'Client created successfully',
         },
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -16,7 +16,7 @@ import DocumentUploadPage from './pages/DocumentUploadPage';
 import { PlaidDashboard } from './pages/PlaidDashboard';
 import LinkComplete from './pages/LinkComplete';
 
-import './App.css';
+//import './App.css';
 
 interface UserInfo { userId: string; userDetails: string; userRoles: string[]; claims: any[]; }
 

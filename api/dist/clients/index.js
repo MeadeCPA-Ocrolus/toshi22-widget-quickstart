@@ -16,6 +16,7 @@
  * @module clients
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+const crypto_1 = require("crypto");
 const database_1 = require("../shared/database");
 /**
  * CORS headers for all responses
@@ -138,6 +139,7 @@ async function listClients(context, req) {
     let query = `
         SELECT 
             c.client_id,
+            c.client_uuid,
             c.first_name,
             c.last_name,
             c.business_name,
@@ -204,6 +206,7 @@ async function getClient(context, clientId) {
     context.log(`Getting client: ${clientId}`);
     const result = await (0, database_1.executeQuery)(`SELECT 
             client_id,
+            client_uuid,
             first_name,
             last_name,
             business_name,
@@ -281,15 +284,17 @@ async function createClient(context, body) {
         return;
     }
     // Insert client
+    const clientUuid = (0, crypto_1.randomUUID)();
     const insertResult = await (0, database_1.executeQuery)(`INSERT INTO clients (
-            first_name, last_name, business_name, email, phone_number,
+            client_uuid, first_name, last_name, business_name, email, phone_number,
             account_type, fiscal_year_start_date, state
         )
-        OUTPUT INSERTED.client_id
+        OUTPUT INSERTED.client_id, INSERTED.client_uuid
         VALUES (
-            @firstName, @lastName, @businessName, @email, @phoneNumber,
+            @clientUuid, @firstName, @lastName, @businessName, @email, @phoneNumber,
             @accountType, @fiscalYearStartDate, @state
         )`, {
+        clientUuid,
         firstName: body.first_name.trim(),
         lastName: body.last_name.trim(),
         businessName: body.business_name?.trim() || null,
@@ -300,11 +305,13 @@ async function createClient(context, body) {
         state: body.state.toUpperCase(),
     });
     const newClientId = insertResult.recordset[0].client_id;
-    context.log(`Created client: ${newClientId}`);
+    const newClientUuid = insertResult.recordset[0].client_uuid;
+    +context.log(`Created client: ${newClientId} (${newClientUuid})`);
     context.res = {
         status: 201,
         body: {
             client_id: newClientId,
+            client_uuid: newClientUuid,
             message: 'Client created successfully',
         },
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

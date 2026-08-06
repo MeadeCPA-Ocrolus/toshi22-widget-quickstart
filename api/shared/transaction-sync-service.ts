@@ -890,8 +890,12 @@ export async function refreshTransactions(
         return { success: true };
 
     } catch (err) {
+        const plaidError = (err as any)?.response?.data;
         const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Failed to refresh transactions for item ${itemId}: ${errorMessage}`);
+        context.log.error(
+            `Failed to refresh transactions for item ${itemId}: ${errorMessage}`,
+            plaidError ? JSON.stringify(plaidError) : ''
+        );
         return { success: false, error: errorMessage };
     }
 }
