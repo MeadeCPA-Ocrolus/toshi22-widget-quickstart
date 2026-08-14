@@ -20,6 +20,8 @@ import { executeQuery } from '../shared/database';
 import { encrypt, decrypt } from '../shared/encryption';
 import { exchangePublicToken, getItem, getAccounts, getPlaidClient } from '../shared/plaid-client';
 import { syncTransactionsForItem } from '../shared/transaction-sync-service';
+import { verifyPlaidWebhook } from '../shared/webhook-verification';
+
 import { 
     syncLiabilitiesForItem, 
     archiveLiabilitiesForItem, 
@@ -1408,6 +1410,23 @@ const httpTrigger: AzureFunction = async function (
     }
 
     context.log('Plaid webhook received');
+
+    try {
+        await verifyPlaidWebhook(
+            req.headers['plaid-verification'],
+            req.rawBody || '',
+            getPlaidClient()
+        );
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        context.log.error(`Webhook verification failed: ${message}`);
+        context.res = {
+            status: 401,
+            body: { error: 'Webhook verification failed' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
 
     try {
         const webhook = req.body as PlaidWebhook;

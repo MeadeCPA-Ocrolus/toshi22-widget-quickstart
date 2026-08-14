@@ -19,6 +19,7 @@ const database_1 = require("../shared/database");
 const encryption_1 = require("../shared/encryption");
 const plaid_client_1 = require("../shared/plaid-client");
 const transaction_sync_service_1 = require("../shared/transaction-sync-service");
+const webhook_verification_1 = require("../shared/webhook-verification");
 const liabilities_sync_service_1 = require("../shared/liabilities-sync-service");
 const investments_sync_service_1 = require("../shared/investments-sync-service");
 // OAuth institutions - these use OAuth flow instead of credential-based
@@ -1050,6 +1051,19 @@ const httpTrigger = async function (context, req) {
         return;
     }
     context.log('Plaid webhook received');
+    try {
+        await (0, webhook_verification_1.verifyPlaidWebhook)(req.headers['plaid-verification'], req.rawBody || '', (0, plaid_client_1.getPlaidClient)());
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        context.log.error(`Webhook verification failed: ${message}`);
+        context.res = {
+            status: 401,
+            body: { error: 'Webhook verification failed' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        };
+        return;
+    }
     try {
         const webhook = req.body;
         if (!webhook.webhook_type || !webhook.webhook_code) {

@@ -15,6 +15,7 @@
     "@azure/functions": "^3.5.1",
     "@azure/storage-blob": "^12.28.0",
     "bent": "^7.3.12",
+    "jose": "^6.2.8",
     "mssql": "^11.0.1",
     "plaid": "^28.0.0"
   },
