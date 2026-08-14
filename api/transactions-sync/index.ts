@@ -18,6 +18,7 @@ import {
     refreshTransactions,
     TransactionSyncResult 
 } from '../shared/transaction-sync-service';
+import { requireAuth } from '../shared/auth';
 
 /**
  * CORS headers for all responses
@@ -40,6 +41,9 @@ const httpTrigger: AzureFunction = async function (
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+
+    const principal = requireAuth(context, req, corsHeaders);
+    if (!principal) return;
 
     try {
         const itemId = req.params?.itemId;

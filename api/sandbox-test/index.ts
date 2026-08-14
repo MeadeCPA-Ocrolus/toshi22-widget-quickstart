@@ -21,6 +21,7 @@
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { encrypt, decrypt } from '../shared/encryption';
+import { requireAuth } from '../shared/auth';
 import {
     getPlaidClient,
     exchangePublicToken,
@@ -702,6 +703,9 @@ const httpTrigger: AzureFunction = async function (
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+
+    const principal = requireAuth(context, req, corsHeaders);
+    if (!principal) return;
 
     if (req.method !== 'POST') {
         context.res = {

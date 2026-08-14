@@ -13,6 +13,7 @@
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { decrypt } from '../shared/encryption';
+import { requireAuth } from '../shared/auth';
 
 /**
  * Item record from database
@@ -98,6 +99,9 @@ const httpTrigger: AzureFunction = async function (
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+
+    const principal = requireAuth(context, req, corsHeaders);
+    if (!principal) return;
 
     try {
         const itemId = req.params?.id;

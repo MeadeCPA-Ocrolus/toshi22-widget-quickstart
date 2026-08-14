@@ -1,10 +1,9 @@
 /**
- * Auth utility — TEMPORARILY DISABLED FOR LOCAL TESTING
+ * Auth utility — in-code principal check
  *
- * requireAuth() currently allows every request through without checking
- * anything. This must be reverted to a real check before deploying to
- * staging or production — see the commented-out version at the bottom
- * of this file for the version to restore.
+ * The Entra edge gate in staticwebapp.config.json is the first lock on
+ * /api/*. This is the second, independent lock: every Function reads the
+ * x-ms-client-principal header itself and rejects requests without one.
  *
  * @module shared/auth
  */
@@ -38,45 +37,49 @@ export function getClientPrincipal(req: HttpRequest): ClientPrincipal | null {
     }
 }
 
-// TEMPORARY — always allows access, no check performed.
-// REVERT before deploying to staging or production.
+/**
+ * Local-dev-only bypass. Requires BOTH:
+ *   1. Not running as a real deployed Function App (AZURE_FUNCTIONS_ENVIRONMENT
+ *      is either unset or 'Development' — Azure always sets this on deployed apps).
+ *   2. ALLOW_DEV_AUTH_BYPASS === 'true' — must be explicitly set in your own
+ *      local.settings.json. Never set as a real App Setting anywhere deployed.
+ */
+function isDevBypassActive(): boolean {
+    const isRunningInAzure = !!process.env.WEBSITE_INSTANCE_ID;
+    return !isRunningInAzure && process.env.ALLOW_DEV_AUTH_BYPASS === 'true';
+}
+
 export function requireAuth(
-    _context: Context,
-    _req: HttpRequest,
-    _corsHeaders: Record<string, string>
-): ClientPrincipal {
-    return {
-        identityProvider: 'dev-bypass',
-        userId: 'local-dev-user',
-        userDetails: 'local-dev@codespace',
-        userRoles: ['authenticated'],
+    context: Context,
+    req: HttpRequest,
+    corsHeaders: Record<string, string>
+): ClientPrincipal | null {
+    const principal = getClientPrincipal(req);
+
+    if (principal) {
+        return principal;
+    }
+
+    if (isDevBypassActive()) {
+        context.log.warn(
+            'AUTH BYPASSED — local dev only. This must never be true on a deployed environment.'
+        );
+        return {
+            identityProvider: 'dev-bypass',
+            userId: 'local-dev-user',
+            userDetails: 'local-dev@codespace',
+            userRoles: ['authenticated'],
+        };
+    }
+
+    context.res = {
+        status: 401,
+        body: { error: 'Unauthorized: no valid client principal found' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     };
+    return null;
 }
 
 export function getStaffIdentity(principal: ClientPrincipal): string {
     return principal.userDetails;
 }
-
-/*
- * REAL VERSION — restore this (and delete the TEMPORARY version above)
- * before deploying anywhere besides local dev:
- *
- * export function requireAuth(
- *     context: Context,
- *     req: HttpRequest,
- *     corsHeaders: Record<string, string>
- * ): ClientPrincipal | null {
- *     const principal = getClientPrincipal(req);
- *
- *     if (!principal) {
- *         context.res = {
- *             status: 401,
- *             body: { error: 'Unauthorized: no valid client principal found' },
- *             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
- *         };
- *         return null;
- *     }
- *
- *     return principal;
- * }
- */

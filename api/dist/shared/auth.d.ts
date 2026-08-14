@@ -1,10 +1,9 @@
 /**
- * Auth utility — TEMPORARILY DISABLED FOR LOCAL TESTING
+ * Auth utility — in-code principal check
  *
- * requireAuth() currently allows every request through without checking
- * anything. This must be reverted to a real check before deploying to
- * staging or production — see the commented-out version at the bottom
- * of this file for the version to restore.
+ * The Entra edge gate in staticwebapp.config.json is the first lock on
+ * /api/*. This is the second, independent lock: every Function reads the
+ * x-ms-client-principal header itself and rejects requests without one.
  *
  * @module shared/auth
  */
@@ -16,6 +15,6 @@ export interface ClientPrincipal {
     userRoles: string[];
 }
 export declare function getClientPrincipal(req: HttpRequest): ClientPrincipal | null;
-export declare function requireAuth(_context: Context, _req: HttpRequest, _corsHeaders: Record<string, string>): ClientPrincipal;
+export declare function requireAuth(context: Context, req: HttpRequest, corsHeaders: Record<string, string>): ClientPrincipal | null;
 export declare function getStaffIdentity(principal: ClientPrincipal): string;
 //# sourceMappingURL=auth.d.ts.map

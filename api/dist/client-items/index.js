@@ -10,6 +10,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const database_1 = require("../shared/database");
+const auth_1 = require("../shared/auth");
 const httpTrigger = async function (context, req) {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,9 @@ const httpTrigger = async function (context, req) {
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+    const principal = (0, auth_1.requireAuth)(context, req, corsHeaders);
+    if (!principal)
+        return;
     // Only accept GET
     if (req.method !== 'GET') {
         context.res = {

@@ -15,6 +15,7 @@ const database_1 = require("../shared/database");
 const encryption_1 = require("../shared/encryption");
 const plaid_client_1 = require("../shared/plaid-client");
 const investments_sync_service_1 = require("../shared/investments-sync-service");
+const auth_1 = require("../shared/auth");
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -26,6 +27,9 @@ const httpTrigger = async function (context, req) {
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+    const principal = (0, auth_1.requireAuth)(context, req, corsHeaders);
+    if (!principal)
+        return;
     if (req.method !== 'POST') {
         context.res = {
             status: 405,

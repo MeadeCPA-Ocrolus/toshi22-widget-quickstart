@@ -10,6 +10,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const database_1 = require("../shared/database");
+const auth_1 = require("../shared/auth");
 // ============================================================================
 // CORS
 // ============================================================================
@@ -26,6 +27,9 @@ const httpTrigger = async function (context, req) {
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+    const principal = (0, auth_1.requireAuth)(context, req, corsHeaders);
+    if (!principal)
+        return;
     try {
         const accountId = req.query.accountId ? parseInt(req.query.accountId, 10) : null;
         const itemId = req.query.itemId ? parseInt(req.query.itemId, 10) : null;

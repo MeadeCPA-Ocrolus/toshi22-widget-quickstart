@@ -15,6 +15,7 @@ import { executeQuery } from '../shared/database';
 import { decrypt } from '../shared/encryption';
 import { getPlaidClient } from '../shared/plaid-client';
 import { syncInvestmentsForItem } from '../shared/investments-sync-service';
+import { requireAuth } from '../shared/auth';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -39,6 +40,9 @@ const httpTrigger: AzureFunction = async function (
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+
+    const principal = requireAuth(context, req, corsHeaders);
+    if (!principal) return;
 
     if (req.method !== 'POST') {
         context.res = {

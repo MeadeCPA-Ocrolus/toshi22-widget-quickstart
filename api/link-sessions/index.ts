@@ -18,6 +18,7 @@
 
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
+import { requireAuth } from '../shared/auth';
 
 /**
  * Link token with session info
@@ -77,6 +78,9 @@ const httpTrigger: AzureFunction = async function (
         context.res = { status: 200, headers: corsHeaders };
         return;
     }
+
+    const principal = requireAuth(context, req, corsHeaders);
+    if (!principal) return;
 
     try {
         // List all link tokens with optional filters
