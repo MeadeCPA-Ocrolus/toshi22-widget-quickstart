@@ -52,6 +52,7 @@ import {
     LocationOn,
     CalendarToday,
     Delete,
+    Download,
     LockReset,
     LinkOff,
     Sync,
@@ -103,6 +104,7 @@ import {
 import { SendLinkDialog } from '../Components/SendLinkDialog';
 import DocumentDropzone from '../Components/DocumentDropzone';
 import { getDocuments, DocumentRecord } from '../services/documents-api';
+import { downloadClientExport } from '../services/export-api';
 import { CategorySelector } from '../Components/CategorySelector';
 import { getCategoryDisplay } from '../constants/plaidCategories';
 import { LiabilityCard } from '../Components/LiabilityCards';
@@ -1088,6 +1090,19 @@ export const ClientDetail: React.FC = () => {
                     }}
                 >
                     Delete Client
+                </Button>
+                <Button
+                    size="small"
+                    startIcon={<Download />}
+                    onClick={async () => {
+                        try {
+                            await downloadClientExport(client.client_uuid);
+                        } catch (err) {
+                            alert(err instanceof Error ? err.message : 'Export failed');
+                        }
+                    }}
+                >
+                    Export Data
                 </Button>
             </Paper>
 
