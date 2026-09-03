@@ -189,9 +189,6 @@ export const ClientList: React.FC = () => {
                             </Typography>
                         </Box>
                         <Stack direction="row" spacing={1}>
-                            <Button variant="contained" startIcon={<Send />} onClick={handleSendNewLink}>
-                                Send Bank Link
-                            </Button>
                             <Button
                                 variant="outlined"
                                 startIcon={<PersonAdd />}
