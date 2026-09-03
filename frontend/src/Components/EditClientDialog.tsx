@@ -8,10 +8,10 @@ import {
     TextField,
     MenuItem,
     Stack,
+    Box,
     Alert,
     CircularProgress,
     IconButton,
-    Grid,
     Divider,
 } from '@mui/material';
 import { Close, Delete } from '@mui/icons-material';
@@ -174,105 +174,93 @@ export const EditClientDialog: React.FC<EditClientDialogProps> = ({
                 <Stack spacing={2} sx={{ mt: 1 }}>
                     {error && <Alert severity="error">{error}</Alert>}
 
-                    <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                            <TextField
-                                label="First Name"
-                                value={form.first_name}
-                                onChange={handleChange('first_name')}
-                                fullWidth
-                                required
-                                disabled={saving || deleting}
-                            />
-                        </Grid>
-                        <Grid item xs={6}>
-                            <TextField
-                                label="Last Name"
-                                value={form.last_name}
-                                onChange={handleChange('last_name')}
-                                fullWidth
-                                required
-                                disabled={saving || deleting}
-                            />
-                        </Grid>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField
+                            label="First Name"
+                            value={form.first_name}
+                            onChange={handleChange('first_name')}
+                            fullWidth
+                            required
+                            disabled={saving || deleting}
+                        />
+                        <TextField
+                            label="Last Name"
+                            value={form.last_name}
+                            onChange={handleChange('last_name')}
+                            fullWidth
+                            required
+                            disabled={saving || deleting}
+                        />
+                    </Box>
 
-                        <Grid item xs={12}>
-                            <TextField
-                                label="Business Name"
-                                value={form.business_name}
-                                onChange={handleChange('business_name')}
-                                fullWidth
-                                disabled={saving || deleting}
-                                helperText="Optional"
-                            />
-                        </Grid>
+                    <TextField
+                        label="Business Name"
+                        value={form.business_name}
+                        onChange={handleChange('business_name')}
+                        fullWidth
+                        disabled={saving || deleting}
+                        helperText="Optional"
+                    />
 
-                        <Grid item xs={6}>
-                            <TextField
-                                label="Email"
-                                type="email"
-                                value={form.email}
-                                onChange={handleChange('email')}
-                                fullWidth
-                                required
-                                disabled={saving || deleting}
-                            />
-                        </Grid>
-                        <Grid item xs={6}>
-                            <TextField
-                                label="Phone Number"
-                                value={form.phone_number}
-                                onChange={handleChange('phone_number')}
-                                fullWidth
-                                disabled={saving || deleting}
-                                helperText="Optional"
-                            />
-                        </Grid>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField
+                            label="Email"
+                            type="email"
+                            value={form.email}
+                            onChange={handleChange('email')}
+                            fullWidth
+                            required
+                            disabled={saving || deleting}
+                        />
+                        <TextField
+                            label="Phone Number"
+                            value={form.phone_number}
+                            onChange={handleChange('phone_number')}
+                            fullWidth
+                            disabled={saving || deleting}
+                            helperText="Optional"
+                        />
+                    </Box>
 
-                        <Grid item xs={6}>
-                            <TextField
-                                select
-                                label="Account Type"
-                                value={form.account_type}
-                                onChange={handleChange('account_type')}
-                                fullWidth
-                                required
-                                disabled={saving || deleting}
-                            >
-                                {ACCOUNT_TYPES.map((opt) => (
-                                    <MenuItem key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
-                        </Grid>
-                        <Grid item xs={6}>
-                            <TextField
-                                label="State"
-                                value={form.state}
-                                onChange={handleChange('state')}
-                                fullWidth
-                                required
-                                disabled={saving || deleting}
-                                inputProps={{ maxLength: 2 }}
-                                helperText="2-letter code, e.g. NY"
-                            />
-                        </Grid>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField
+                            select
+                            label="Account Type"
+                            value={form.account_type}
+                            onChange={handleChange('account_type')}
+                            fullWidth
+                            required
+                            disabled={saving || deleting}
+                        >
+                            {ACCOUNT_TYPES.map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            label="State"
+                            value={form.state}
+                            onChange={handleChange('state')}
+                            fullWidth
+                            required
+                            disabled={saving || deleting}
+                            inputProps={{ maxLength: 2 }}
+                            helperText="2-letter code, e.g. NY"
+                        />
+                    </Box>
 
-                        <Grid item xs={12}>
-                            <TextField
-                                label="Fiscal Year Start Date"
-                                type="date"
-                                value={form.fiscal_year_start_date}
-                                onChange={handleChange('fiscal_year_start_date')}
-                                fullWidth
-                                required
-                                disabled={saving || deleting}
-                                InputLabelProps={{ shrink: true }}
-                                helperText="Usually 01-01 for a calendar-year filer"
-                            />
-                        </Grid>
-                    </Grid>
+                    <TextField
+                        label="Fiscal Year Start Date"
+                        type="date"
+                        value={form.fiscal_year_start_date}
+                        onChange={handleChange('fiscal_year_start_date')}
+                        fullWidth
+                        required
+                        disabled={saving || deleting}
+                        InputLabelProps={{ shrink: true }}
+                        helperText="Usually 01-01 for a calendar-year filer"
+                    />
 
                     <Divider sx={{ pt: 1 }} />
 
