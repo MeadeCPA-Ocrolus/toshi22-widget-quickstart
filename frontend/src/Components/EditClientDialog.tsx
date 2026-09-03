@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -12,16 +12,20 @@ import {
     CircularProgress,
     IconButton,
     Grid,
+    Divider,
 } from '@mui/material';
-import { Close } from '@mui/icons-material';
-import { AccountType } from '../types/plaid';
-import { createClient } from '../services/api';
+import { Close, Delete } from '@mui/icons-material';
+import { Client, AccountType } from '../types/plaid';
+import { updateClient, deleteClient, getClientDisplayName } from '../services/api';
 
-interface CreateClientDialogProps {
+interface EditClientDialogProps {
     open: boolean;
+    client: Client;
     onClose: () => void;
-    /** Called with the new client's ID after a successful save */
-   onCreated: (clientId: number) => void;
+    /** Called after a successful save — parent should refetch client data */
+    onSaved: () => void;
+    /** Called after a successful delete — parent should navigate away */
+    onDeleted: () => void;
 }
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
@@ -44,22 +48,23 @@ interface FormState {
     state: string;
 }
 
-const EMPTY_FORM: FormState = {
-    first_name: '',
-    last_name: '',
-    business_name: '',
-    email: '',
-    phone_number: '',
-    account_type: '',
-    fiscal_year_start_date: '',
-    state: '',
-};
+function clientToForm(client: Client): FormState {
+    return {
+        first_name: client.first_name || '',
+        last_name: client.last_name || '',
+        business_name: client.business_name || '',
+        email: client.email || '',
+        phone_number: client.phone_number || '',
+        account_type: client.account_type || '',
+        // Trim to YYYY-MM-DD for the date input, same as how it's stored
+        fiscal_year_start_date: client.fiscal_year_start_date
+            ? String(client.fiscal_year_start_date).slice(0, 10)
+            : '',
+        state: client.state || '',
+    };
+}
 
-/**
- * Minimal client-side validation, mirroring the backend's actual
- * requirements in api/clients/index.ts (createClient) — not a full
- * re-implementation, just enough to avoid an obvious round-trip failure.
- */
+/** Same validation rules as CreateClientDialog */
 function validate(form: FormState): string | null {
     if (!form.first_name.trim()) return 'First name is required';
     if (!form.last_name.trim()) return 'Last name is required';
@@ -72,10 +77,25 @@ function validate(form: FormState): string | null {
     return null;
 }
 
-export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, onClose, onCreated }) => {
-    const [form, setForm] = useState<FormState>(EMPTY_FORM);
+export const EditClientDialog: React.FC<EditClientDialogProps> = ({
+    open,
+    client,
+    onClose,
+    onSaved,
+    onDeleted,
+}) => {
+    const [form, setForm] = useState<FormState>(clientToForm(client));
     const [saving, setSaving] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Re-sync form whenever a different client's dialog is opened
+    useEffect(() => {
+        if (open) {
+            setForm(clientToForm(client));
+            setError(null);
+        }
+    }, [open, client]);
 
     const handleChange = (field: keyof FormState) => (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -84,13 +104,11 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
     };
 
     const handleClose = () => {
-        if (saving) return; // don't let the dialog close mid-request
-        setForm(EMPTY_FORM);
-        setError(null);
+        if (saving || deleting) return; // don't close mid-request
         onClose();
     };
 
-    const handleSubmit = async () => {
+    const handleSave = async () => {
         const validationError = validate(form);
         if (validationError) {
             setError(validationError);
@@ -101,10 +119,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
         setError(null);
 
         try {
-            // Only the fields the backend's createClient actually reads —
-            // client_uuid is server-generated, tax-rate fields and
-            // is_archived aren't part of creation at all.
-            const response = await createClient({
+            await updateClient(client.client_id, {
                 first_name: form.first_name.trim(),
                 last_name: form.last_name.trim(),
                 business_name: form.business_name.trim() || null,
@@ -115,25 +130,42 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                 state: form.state.trim().toUpperCase(),
             });
 
-            onCreated(response.client_id);
-            setForm(EMPTY_FORM);
+            onSaved();
             onClose();
         } catch (err) {
             const message =
                 err instanceof Error
                     ? err.message
-                    : (err as { error?: string })?.error || 'Failed to create client';
+                    : (err as { error?: string })?.error || 'Failed to update client';
             setError(message);
         } finally {
             setSaving(false);
         }
     };
 
+    const handleDelete = async () => {
+        if (!window.confirm(`Delete ${getClientDisplayName(client)}? This can't be undone from the UI.`)) {
+            return;
+        }
+
+        setDeleting(true);
+        setError(null);
+
+        try {
+            await deleteClient(client.client_id);
+            onDeleted();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to delete client';
+            setError(message);
+            setDeleting(false);
+        }
+    };
+
     return (
         <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Add New Client
-                <IconButton onClick={handleClose} size="small" disabled={saving}>
+                Edit Client
+                <IconButton onClick={handleClose} size="small" disabled={saving || deleting}>
                     <Close />
                 </IconButton>
             </DialogTitle>
@@ -150,7 +182,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 onChange={handleChange('first_name')}
                                 fullWidth
                                 required
-                                disabled={saving}
+                                disabled={saving || deleting}
                             />
                         </Grid>
                         <Grid item xs={6}>
@@ -160,7 +192,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 onChange={handleChange('last_name')}
                                 fullWidth
                                 required
-                                disabled={saving}
+                                disabled={saving || deleting}
                             />
                         </Grid>
 
@@ -170,7 +202,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 value={form.business_name}
                                 onChange={handleChange('business_name')}
                                 fullWidth
-                                disabled={saving}
+                                disabled={saving || deleting}
                                 helperText="Optional"
                             />
                         </Grid>
@@ -183,7 +215,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 onChange={handleChange('email')}
                                 fullWidth
                                 required
-                                disabled={saving}
+                                disabled={saving || deleting}
                             />
                         </Grid>
                         <Grid item xs={6}>
@@ -192,7 +224,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 value={form.phone_number}
                                 onChange={handleChange('phone_number')}
                                 fullWidth
-                                disabled={saving}
+                                disabled={saving || deleting}
                                 helperText="Optional"
                             />
                         </Grid>
@@ -205,7 +237,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 onChange={handleChange('account_type')}
                                 fullWidth
                                 required
-                                disabled={saving}
+                                disabled={saving || deleting}
                             >
                                 {ACCOUNT_TYPES.map((opt) => (
                                     <MenuItem key={opt.value} value={opt.value}>
@@ -221,7 +253,7 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 onChange={handleChange('state')}
                                 fullWidth
                                 required
-                                disabled={saving}
+                                disabled={saving || deleting}
                                 inputProps={{ maxLength: 2 }}
                                 helperText="2-letter code, e.g. NY"
                             />
@@ -235,26 +267,38 @@ export const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, on
                                 onChange={handleChange('fiscal_year_start_date')}
                                 fullWidth
                                 required
-                                disabled={saving}
+                                disabled={saving || deleting}
                                 InputLabelProps={{ shrink: true }}
                                 helperText="Usually 01-01 for a calendar-year filer"
                             />
                         </Grid>
                     </Grid>
+
+                    <Divider sx={{ pt: 1 }} />
+
+                    <Button
+                        color="error"
+                        variant="outlined"
+                        startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <Delete />}
+                        onClick={handleDelete}
+                        disabled={saving || deleting}
+                    >
+                        {deleting ? 'Deleting…' : 'Delete Client'}
+                    </Button>
                 </Stack>
             </DialogContent>
 
             <DialogActions sx={{ px: 3, py: 2 }}>
-                <Button onClick={handleClose} disabled={saving}>
+                <Button onClick={handleClose} disabled={saving || deleting}>
                     Cancel
                 </Button>
                 <Button
                     variant="contained"
-                    onClick={handleSubmit}
-                    disabled={saving}
+                    onClick={handleSave}
+                    disabled={saving || deleting}
                     startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
                 >
-                    {saving ? 'Creating…' : 'Create Client'}
+                    {saving ? 'Saving…' : 'Save Changes'}
                 </Button>
             </DialogActions>
         </Dialog>

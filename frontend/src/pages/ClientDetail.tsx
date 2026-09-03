@@ -87,7 +87,6 @@ import {
     deleteItem,
     getFailedLinkSessions,
     FailedLinkSession,
-    deleteClient,
 } from '../services/api';
 import {
     getTransactionsForAccount,
@@ -102,6 +101,7 @@ import {
     AccountTypeBadge,
 } from '../Components/StatusBadge';
 import { SendLinkDialog } from '../Components/SendLinkDialog';
+import { EditClientDialog } from '../Components/EditClientDialog';
 import DocumentDropzone from '../Components/DocumentDropzone';
 import { getDocuments, DocumentRecord } from '../services/documents-api';
 import { downloadClientExport } from '../services/export-api';
@@ -820,6 +820,7 @@ export const ClientDetail: React.FC = () => {
 
     // Dialog state
     const [sendLinkDialogOpen, setSendLinkDialogOpen] = useState(false);
+    const [editClientDialogOpen, setEditClientDialogOpen] = useState(false);
     const [selectedItemForUpdate, setSelectedItemForUpdate] = useState<ItemWithAccounts | null>(null);
     const [isNewLinkMode, setIsNewLinkMode] = useState(false);
 
@@ -1079,18 +1080,7 @@ export const ClientDetail: React.FC = () => {
                     <Typography variant="body2" color="text.primary">                        {getClientDisplayName(client)}
                     </Typography>
                 </Breadcrumbs>
-                <Button
-                    size="small"
-                    color="error"
-                    startIcon={<Delete />}
-                    onClick={async () => {
-                        if (!window.confirm(`Delete ${getClientDisplayName(client)}? This can't be undone from the UI.`)) return;
-                        await deleteClient(client.client_id);
-                        navigate('/bank/clients');
-                    }}
-                >
-                    Delete Client
-                </Button>
+                
                 <Button
                     size="small"
                     startIcon={<Download />}
@@ -1165,13 +1155,22 @@ export const ClientDetail: React.FC = () => {
                                 </Typography>
                             </Box>
                         </Box>
-                        <Button
-                            variant="contained"
-                            startIcon={<Send />}
-                            onClick={handleSendNewLink}
-                        >
-                            Send Bank Link
-                        </Button>
+                        <Stack direction="row" spacing={1}>
+                            <Button
+                                variant="contained"
+                                startIcon={<Send />}
+                                onClick={handleSendNewLink}
+                            >
+                                Send Bank Link
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                startIcon={<Edit />}
+                                onClick={() => setEditClientDialogOpen(true)}
+                            >
+                                Edit Client
+                            </Button>
+                        </Stack>
                     </Box>
 
                     <Divider sx={{ my: 2 }} />
@@ -1579,6 +1578,13 @@ export const ClientDetail: React.FC = () => {
                     setSelectedItemForUpdate(null);
                     fetchClientData();
                 }}
+            />
+            <EditClientDialog
+                open={editClientDialogOpen}
+                client={client}
+                onClose={() => setEditClientDialogOpen(false)}
+                onSaved={fetchClientData}
+                onDeleted={() => navigate('/bank/clients')}
             />
         </Box>
     );

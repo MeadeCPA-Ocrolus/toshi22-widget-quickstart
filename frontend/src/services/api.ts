@@ -108,8 +108,8 @@ export async function createClient(
 export async function updateClient(
     clientId: number,
     updates: Partial<Client>
-): Promise<{ client: Client; message: string }> {
-    return fetchApi<{ client: Client; message: string }>(`/clients/${clientId}`, {
+): Promise<{ client_id: number; message: string }> {
+    return fetchApi<{ client_id: number; message: string }>(`/clients/${clientId}`, {
         method: 'PUT',
         body: JSON.stringify(updates),
     });
