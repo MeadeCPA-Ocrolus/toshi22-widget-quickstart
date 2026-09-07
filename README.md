@@ -1,132 +1,136 @@
 # Meade CPA Financial Data Platform
 
-A full-stack financial data management system built for CPAs to automate bank data retrieval and client financial tracking.
+This is an internal, staff-facing tool for Meade CPA, an accounting and tax firm. It's the intake point for client financial data, pulling bank transactions, holdings, and liabilities data via Plaid, and giving staff one place to upload and manage client documents. Plaid data lives in Azure SQL. Uploaded files live in Azure Blob Storage. From there, staff generate an export and hand it off to TaxDome, the firm's internal source of truth for client records.
 
-## Overview
 
-This platform integrates with [Plaid](https://plaid.com/) to automatically sync banking, investment, and liability data from client bank accounts. CPAs can manage clients, view real-time financial data, and categorize transactions—eliminating the manual collection of bank statements.
+## Architecture overview
 
-## Tech Stack
+The React frontend is served by Azure Static Web Apps and calls the Azure Functions HTTP API. Functions use Plaid for bank-linking, webhooks, and financial-data synchronization; Azure SQL for storing client and financial records; and Azure Blob Storage for file content. Staff-uploaded documents are stored in Azure Blob Storage and are manually moved to TaxDome. The export function produces a downloadable ZIP of all client Plaid-sourced financial data. The current TaxDome step is also outside the application: staff download the export and manually move the required files into TaxDome. The high-level data direction is shown below. 
 
-- **Frontend**: React 18, TypeScript, Material-UI
-- **Backend**: Azure Functions (Node.js 18, TypeScript)
-- **Database**: Azure SQL Database (Serverless)
-- **Authentication**: Azure AD / Entra ID
-- **Infrastructure**: Azure Static Web Apps, Azure Key Vault, GitHub Actions CI/CD
+```mermaid
+flowchart LR
+    P[Plaid]
+    SWA[Azure Static Web App<br/>React staff UI]
+    API[Azure Functions<br/>HTTP API and webhook handlers]
+    SQL[(Azure SQL)]
+    BLOB[(Azure Blob Storage<br/>documents)]
+    ZIP[Staff downloads ZIP export]
+    TD[TaxDome<br/>manual handoff]
 
-## Features
-
-### Bank Account Connections
-- CPAs send Plaid Hosted Links to clients via the dashboard
-- Clients securely connect their bank accounts without CPA involvement
-- Supports 10,000+ financial institutions
-
-### Automated Data Sync
-- **Transactions**: Daily transaction sync with cursor-based pagination
-- **Investments**: Holdings, securities, and investment transaction history
-- **Liabilities**: Credit cards, student loans, and mortgages with APR details
-
-### Real-Time Updates
-- Webhook-driven architecture processes 10+ Plaid event types
-- Automatic sync on new transactions, holdings updates, and account changes
-- Re-authentication flow when bank credentials expire
-
-### CPA Dashboard
-- Client management with connected bank accounts
-- Transaction categorization for low-confidence items
-- Liability details with tax-relevant fields (YTD interest)
-- Investment portfolio view with gain/loss analytics
-
-## Architecture
-
+    P -->|Link, webhooks, transactions,<br/>holdings, liabilities| API
+    SWA -->|Authenticated API calls| API
+    API -->|Client and financial records| SQL
+    API -.->|Issues short-lived SAS URL| SWA
+    SWA -->|Direct upload via SAS URL| BLOB
+    SQL -->|Export queries| API
+    API -->|Generated CSV ZIP,<br/>Plaid data only| ZIP
+    ZIP -->|Staff manually uploads| TD
+    BLOB -->|Staff manually uploads| TD
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  React Frontend │────▶│  Azure Functions │────▶│   Azure SQL     │
-│  (Static Web App)│     │  (13 endpoints)  │     │   Database      │
-└─────────────────┘     └────────┬─────────┘     └─────────────────┘
-                                 │
-                                 ▼
-                        ┌──────────────────┐
-                        │    Plaid API     │
-                        │ (Transactions,   │
-                        │  Investments,    │
-                        │  Liabilities)    │
-                        └──────────────────┘
-```
+### Tech stack
 
-## API Endpoints
+- Frontend: React, TypeScript, Material-UI
+- Backend: Azure Functions, Node.js, TypeScript
+- Database: Azure SQL Database (Serverless tier), Azure Blob Storage
+- Authentication: Azure Static Web Apps built-in auth (Entra ID as identity provider)
+- Infrastructure: Azure Static Web Apps, GitHub Actions CI/CD
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/clients` | GET, POST | Manage clients |
-| `/api/client-items/{clientId}` | GET | Get bank connections for client |
-| `/api/plaid-link-token` | POST | Generate Plaid Link token |
-| `/api/plaid-webhook` | POST | Handle Plaid webhooks |
-| `/api/transactions` | GET | List transactions with filters |
-| `/api/transactions/sync/{itemId}` | POST | Trigger transaction sync |
-| `/api/liabilities` | GET | Get liability data |
-| `/api/investments` | GET | Get holdings and investment transactions |
+## Core features
 
-## Database Schema
+### Connect a client's bank
 
-Core tables:
-- `clients` - CPA client records
-- `items` - Bank connections (Plaid Items)
-- `accounts` - Individual bank accounts
-- `transactions` - Transaction history
-- `securities` - Global securities data
-- `holdings` - Investment positions per account
-- `investment_transactions` - Buy/sell/dividend history
-- `liabilities_credit` - Credit card details
-- `liabilities_student` - Student loan details
-- `liabilities_mortgage` - Mortgage details
+- Send a Plaid Hosted Link to a client to connect to a bank, or send an update link for an existing bank connection.
+- Track pending, expired, failed, and incomplete link sessions, including suggested staff action.
+- View connection status and alerts for login-required, needs-update, error, and pending-sync states.
+- Remove a bank connection, optionally invalidating the Plaid connection.
+
+### Review synchronized financial data
+
+- View accounts and balances for each connected Plaid Item (bank).
+- Browse transactions, including pending status, merchant details, Plaid categories, and categorization confidence levels.
+- Manually categorize and verify transactions that need review.
+- Trigger a transaction sync or request a refresh for a connection.
+- View investment holdings, securities, investment transactions, and calculated portfolio details where available.
+- View credit-card, student-loan, and mortgage liability data, including credit APR details where available.
+
+### Upload and manage documents
+
+- Drag and drop or browse for multiple files on a client's detail page.
+- Upload files directly from the browser to the `documents` Azure Blob container using a short-lived, write-only SAS URL.
+
+### Export client data
+
+- Download a ZIP for a client from the client detail page.
+- The ZIP includes `client_info.csv` and per-bank CSVs for accounts, transactions, credit/student/mortgage liabilities, holdings, and investment transactions.
+- Staff use this download as the financial-data portion of the manual TaxDome handoff.
+
+## Data flow
+
+### Plaid to Azure SQL
+
+1. Staff create or select a client and request a link token from `/api/plaid/link-token`.
+2. The client completes Plaid Hosted Link. Plaid sends `SESSION_FINISHED` to `/api/plaid/webhook`; the handler exchanges the public token, encrypts the access token, and creates or updates the Plaid Item and its accounts.
+3. Plaid sends webhooks when transaction, liability, investment, account, or connection state changes. The webhook handler records the event, updates Item status, and marks transaction updates available or starts the relevant sync work.
+4. Transaction sync uses Plaid's cursor-based `/transactions/sync` flow and writes additions, changes, removals to transaction data to Azure SQL. 
+5. Staff view the resulting records through the client detail page. The UI can also request an explicit transaction sync or refresh.
+
+### Documents and export to TaxDome
+
+For a document, the browser requests `/api/upload-url`, uploads directly to Blob Storage, computes a SHA-256 hash, and calls `POST /api/documents`. The API verifies that the blob exists, rejects duplicate content for the same client and tax year, and records the document metadata in Azure SQL. Separately, `GET /api/export-client-data` queries Azure SQL and streams a ZIP of Plaid-derived CSVs to the browser. Staff currently download the ZIP and manually upload the required export and document files into TaxDome. 
+
+## Database schema
+
+- **Client identity and external references:** `clients` stores the internal integer ID, durable UUID, contact/business/tax-profile fields, sync state, Plaid user ID, and archive state.
+- **Bank connections and link history:** `items` stores Plaid Items, encrypted access tokens and key IDs, institution/status/error state, consent and transaction cursors, and transaction/investment/liability sync timestamps. `accounts` stores the accounts under each Item and their balances and reporting flags. `link_tokens` stores one row per hosted-link attempt, including its status, expiration, and the most recent session outcome. `link_sessions` stores the full history of individual session events tied to each token.
+- **Plaid financial data:** `transactions` stores transaction identity, dates, merchant and amount data, Plaid/manual categories, confidence and verification state, processing state, and archive fields. `securities`, `holdings`, and `investment_transactions` store investment reference data, positions, and activity. `liabilities_credit` plus `liabilities_credit_aprs`, `liabilities_student`, and `liabilities_mortgage` store the supported liability types and their tax/payment details.
+- **Documents and exports:** `documents` stores document UUIDs, client UUIDs, tax years, Blob paths, filenames, sizes, hashes, uploader identity, and upload timestamps. 
+- **Security and audit:** `encryption_keys` stores the keys used to encrypt Plaid access tokens; `webhook_log` records Plaid webhook payloads and processing state. Soft-archive/status fields are also used throughout the financial tables.
 
 ## Security
 
-- Plaid access tokens encrypted via Azure Key Vault
-- Azure AD authentication for CPA users
-- Soft-delete patterns preserve audit trails
-- Webhook signature verification
+This app uses two independent layers of protection, not just one:
 
-## Environment Variables
+1. **Edge gate** — Azure Static Web Apps applies an Entra ID login requirement to the frontend and to all protected `/api/*` routes, before a request ever reaches application code.
+2. **In-code check** — every protected Function independently verifies the `x-ms-client-principal` header itself, rather than trusting the edge gate alone.
 
-```
-PLAID_CLIENT_ID=
-PLAID_SECRET=
-PLAID_ENV=sandbox|production
+**Two routes are deliberately public, by design:**
+- `/api/ping` — a basic health check
+- `/api/plaid/webhook` — must stay open since Plaid, not a logged-in staff member, calls it. Instead of the staff principal check, this endpoint verifies Plaid's own signed JWT, confirms a SHA-256 hash of the request body matches what Plaid signed, and rejects anything older than a few minutes to prevent replay.
 
-AZURE_SQL_CONNECTION_STRING=
-AZURE_KEY_VAULT_URL=
+Plaid access tokens are stored encrypted, with the encryption keys held in the `encryption_keys` table.
 
-AAD_CLIENT_ID=
-AAD_CLIENT_SECRET=
-```
+## Environments
 
-## Local Development
+**Local development** runs the React app with `npm start` in `frontend` and the Functions host with `npm start` in `api` (`func start` after the API's `prestart` TypeScript build). The dev container installs both dependency sets and Azure Functions Core Tools. 
+
+**Deployed development/production path** is the Azure Static Web App workflow. A push to `main` builds `frontend` with `npm ci && npm run build`, then deploys the prebuilt `frontend/build` and builds the Functions API with `npm ci && npm run build`. The deployed Static Web Apps route rules require authentication for the app and `/api/*`, except for `/api/ping`, `/api/plaid/webhook`, and `/bank/link-complete`.
+
+## Getting started
+
+The checked-in dev-container setup installs dependencies with these commands:
 
 ```bash
-# Install dependencies
-cd api && npm install
-cd frontend && npm install
-
-# Run backend
-cd api && npm start
-
-# Run frontend
-cd frontend && npm start
+npm install --prefix frontend
+npm install --prefix api
+npm install -g azure-functions-core-tools@4 --unsafe-perm true
 ```
 
-## Deployment
+Configure local API settings securely, including `AZURE_SQL_CONNECTION_STRING`, `AZURE_STORAGE_CONNECTION_STRING`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, and the other values required by the Functions.
 
-Deployed via GitHub Actions to Azure Static Web Apps. Push to `main` triggers automatic build and deployment.
+Start the two processes in separate terminals:
 
-## Plaid Products Used
+```bash
+cd api
+npm start
+```
 
-- **Transactions** - Bank transaction history with categorization
-- **Liabilities** - Credit card, student loan, mortgage data
-- **Investments** - Holdings, securities, investment transactions
-- **Link** - Hosted Link for secure bank connections
+```bash
+cd frontend
+npm start
+```
 
-## License
+The frontend development server runs at `http://localhost:3000`; the Functions host uses the default Azure Functions Core Tools local address. The API can also be built and tested with `npm run build` and `npm test` from `api`; the frontend provides `npm run build` and `npm test`.
 
-Private - Meade CPA
+## Known limitations
+
+- TaxDome's public API is currently in private beta. The manual TaxDome handoff is deliberate: staff download the financial-data ZIP and move the needed files into TaxDome by hand. The export boundary is intended to be replaceable with a future automated push.
