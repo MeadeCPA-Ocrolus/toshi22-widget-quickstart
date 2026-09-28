@@ -1,0 +1,36 @@
+{
+  "version": "2.6.2",
+  "release_version": "",
+  "released_at": "",
+  "summary": {
+    "title": "Meade CPA Plaid Integration Threat Model",
+    "owner": "Toshi Troyer",
+    "description": "An internal, staff-facing web application for Meade CPA, an accounting and tax firm. Staff use it to connect client bank accounts via Plaid (transactions, holdings, liabilities), upload and manage client documents, and export the resulting financial data. No client ever logs into this application directly; the only client-facing touchpoint is a one-time Plaid Hosted Link session used to connect a bank account, completed outside this app's own sessions. The frontend is a React app served by Azure Static Web Apps; the backend is a set of Azure Functions handling API requests and Plaid webhooks. Client and financial data is stored in Azure SQL; uploaded documents and generated exports are stored in Azure Blob Storage. TaxDome is the firm's system of record for client documents and data; the current handoff from this application to TaxDome is manual, staff download an export and upload it directly, since TaxDome's API is not yet available for automated integration.",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [
+      {
+        "name": "Toshi Troyer"
+      },
+      {
+        "name": "Bartley Troyer"
+      }
+    ],
+    "diagrams": [
+      {
+        "id": 0,
+        "title": "Bank Account Linking (Plaid)",
+        "diagramType": "STRIDE",
+        "placeholder": "New STRIDE diagram description",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.6.2",
+        "cells": [],
+        "description": "Data flow for connecting a client's bank account via Plaid. Staff log in and request a bank link for a client through Azure Functions, which requests a link token from Plaid and returns it to the browser. Staff then deliver the resulting link to the bank client manually, outside the app, since the bank client never has a session with this application directly. The bank client completes Plaid's Hosted Link on their own, entering bank credentials with Plaid only. Plaid then sends a webhook back to Azure Functions, which writes the resulting account and token data to Azure SQL."
+      }
+    ],
+    "diagramTop": 1,
+    "reviewer": "Toshi Troyer",
+    "threatTop": 0
+  }
+}
