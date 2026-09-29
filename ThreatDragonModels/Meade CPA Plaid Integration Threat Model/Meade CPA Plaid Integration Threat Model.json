@@ -28,8 +28,8 @@
         "cells": [
           {
             "position": {
-              "x": 446.25,
-              "y": 184.0000000000002
+              "x": 466.25,
+              "y": 204.0000000000002
             },
             "size": {
               "width": 200,
@@ -42,8 +42,8 @@
             },
             "visible": true,
             "shape": "trust-boundary-box",
-            "id": "8a08f080-40e9-4d98-876e-bb2aa4aaa1fe",
             "zIndex": -1,
+            "id": "8a08f080-40e9-4d98-876e-bb2aa4aaa1fe",
             "data": {
               "type": "tm.BoundaryBox",
               "name": "Staff Browser",
@@ -52,6 +52,7 @@
               "hasOpenThreats": false,
               "crossingFlows": [
                 "f6a24d17-364b-4d98-8a3c-12e90d521331",
+                "c7cbba68-1798-4c25-8aa4-15e324004991",
                 "ecf23376-711a-4a02-b359-3173a4ca1163"
               ],
               "containedElements": [
@@ -61,8 +62,8 @@
           },
           {
             "position": {
-              "x": 196.25,
-              "y": 419.0000000000001
+              "x": 216.25,
+              "y": 439.0000000000001
             },
             "size": {
               "width": 280,
@@ -75,8 +76,8 @@
             },
             "visible": true,
             "shape": "trust-boundary-box",
-            "id": "eb94f471-b3e4-4113-873f-b1357884b4dd",
             "zIndex": -1,
+            "id": "eb94f471-b3e4-4113-873f-b1357884b4dd",
             "data": {
               "type": "tm.BoundaryBox",
               "name": "Meade CPA Azure / Web",
@@ -97,8 +98,8 @@
           },
           {
             "position": {
-              "x": 663,
-              "y": 419.0000000000001
+              "x": 683,
+              "y": 439.0000000000001
             },
             "size": {
               "width": 200,
@@ -111,8 +112,8 @@
             },
             "visible": true,
             "shape": "trust-boundary-box",
-            "id": "f433223f-162e-4736-8fcf-467e9a11f7c7",
             "zIndex": -1,
+            "id": "f433223f-162e-4736-8fcf-467e9a11f7c7",
             "data": {
               "type": "tm.BoundaryBox",
               "name": "Plaid/Web",
@@ -121,7 +122,8 @@
               "hasOpenThreats": false,
               "crossingFlows": [
                 "56030d7a-0126-4c4d-9ba4-ce73ff3d1558",
-                "a4440d35-d273-4978-bf87-b4a17b0af6fb"
+                "a4440d35-d273-4978-bf87-b4a17b0af6fb",
+                "246e9b61-3e6f-4e82-9245-57cc978ec1ae"
               ],
               "containedElements": [
                 "52dc8d94-5ea0-4760-8c4f-22987df01a11"
@@ -130,8 +132,8 @@
           },
           {
             "position": {
-              "x": 490,
-              "y": 70
+              "x": 510,
+              "y": 90
             },
             "size": {
               "width": 112.5,
@@ -149,6 +151,7 @@
             },
             "visible": true,
             "shape": "actor",
+            "zIndex": 1,
             "ports": {
               "groups": {
                 "top": {
@@ -232,7 +235,6 @@
               ]
             },
             "id": "32e4c416-fcfe-4548-8468-5417e770fecd",
-            "zIndex": 1,
             "data": {
               "type": "tm.Actor",
               "name": "Meade CPA Staff",
@@ -247,8 +249,8 @@
           },
           {
             "position": {
-              "x": 476.25,
-              "y": 214.00000000000023
+              "x": 496.25,
+              "y": 234.00000000000023
             },
             "size": {
               "width": 140,
@@ -266,6 +268,7 @@
             },
             "visible": true,
             "shape": "process",
+            "zIndex": 2,
             "ports": {
               "groups": {
                 "top": {
@@ -349,7 +352,6 @@
               ]
             },
             "id": "e26a11eb-7ff6-4388-867c-a27a0f798dfa",
-            "zIndex": 2,
             "data": {
               "type": "tm.Process",
               "name": "React Frontend",
@@ -367,8 +369,8 @@
           },
           {
             "position": {
-              "x": 265,
-              "y": 469.0000000000001
+              "x": 285,
+              "y": 489.0000000000001
             },
             "size": {
               "width": 130,
@@ -386,6 +388,7 @@
             },
             "visible": true,
             "shape": "process",
+            "zIndex": 3,
             "ports": {
               "groups": {
                 "top": {
@@ -469,7 +472,6 @@
               ]
             },
             "id": "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
-            "zIndex": 3,
             "data": {
               "type": "tm.Process",
               "name": "Azure Functions",
@@ -487,8 +489,8 @@
           },
           {
             "position": {
-              "x": 270,
-              "y": 616
+              "x": 290,
+              "y": 636
             },
             "size": {
               "width": 120,
@@ -506,6 +508,7 @@
             },
             "visible": true,
             "shape": "process",
+            "zIndex": 4,
             "ports": {
               "groups": {
                 "top": {
@@ -589,7 +592,6 @@
               ]
             },
             "id": "006d38f1-2ad4-4271-bd37-d11c9c376947",
-            "zIndex": 4,
             "data": {
               "type": "tm.Process",
               "name": "Azure SQL",
@@ -607,8 +609,8 @@
           },
           {
             "position": {
-              "x": 703,
-              "y": 464
+              "x": 723,
+              "y": 484
             },
             "size": {
               "width": 120,
@@ -626,6 +628,7 @@
             },
             "visible": true,
             "shape": "process",
+            "zIndex": 5,
             "ports": {
               "groups": {
                 "top": {
@@ -722,8 +725,7 @@
               "isWebApplication": false,
               "privilegeLevel": "",
               "threats": []
-            },
-            "zIndex": 5
+            }
           },
           {
             "shape": "flow",
@@ -775,12 +777,12 @@
             },
             "vertices": [
               {
-                "x": 210,
-                "y": 310
+                "x": 230,
+                "y": 330
               },
               {
-                "x": 290,
-                "y": 510
+                "x": 310,
+                "y": 530
               }
             ]
           },
@@ -834,8 +836,8 @@
             },
             "vertices": [
               {
-                "x": 540,
-                "y": 580
+                "x": 560,
+                "y": 600
               }
             ]
           },
@@ -889,8 +891,62 @@
             },
             "vertices": [
               {
-                "x": 540,
-                "y": 460
+                "x": 560,
+                "y": 480
+              }
+            ]
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "(1) Staff login via Entra ID",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": [
+                "8a08f080-40e9-4d98-876e-bb2aa4aaa1fe"
+              ]
+            },
+            "labels": [
+              "(1) Staff login via Entra ID"
+            ],
+            "id": "c7cbba68-1798-4c25-8aa4-15e324004991",
+            "source": {
+              "cell": "32e4c416-fcfe-4548-8468-5417e770fecd",
+              "port": "dff2353e-900b-4e27-b061-c4ae05009c21"
+            },
+            "target": {
+              "cell": "e26a11eb-7ff6-4388-867c-a27a0f798dfa",
+              "port": "550134dd-57e1-40f5-a8b7-162fa4e56b98"
+            },
+            "vertices": [
+              {
+                "x": 680,
+                "y": 160
               }
             ]
           },
@@ -940,18 +996,293 @@
             },
             "target": {
               "cell": "e26a11eb-7ff6-4388-867c-a27a0f798dfa",
+              "port": "9b626264-f3fe-4d23-8a98-510968923839"
+            },
+            "vertices": [
+              {
+                "x": 540,
+                "y": 440
+              },
+              {
+                "x": 586.25,
+                "y": 410
+              }
+            ]
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "(6) Hosted Link delivered to client via sms / email",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": []
+            },
+            "labels": [
+              "(6) Hosted Link delivered to client via sms / email"
+            ],
+            "id": "8d8ad9a3-a200-4352-b4fc-0915360aafc7",
+            "source": {
+              "x": 623,
+              "y": 284
+            },
+            "target": {
+              "x": 1050,
+              "y": 150
+            },
+            "vertices": [
+              {
+                "x": 930,
+                "y": 220
+              }
+            ]
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "(7) Client completes Hosted Link,\nbank credentials to Plaid only",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": [
+                "f433223f-162e-4736-8fcf-467e9a11f7c7"
+              ]
+            },
+            "labels": [
+              "(7) Client completes Hosted Link,\nbank credentials to Plaid only"
+            ],
+            "id": "246e9b61-3e6f-4e82-9245-57cc978ec1ae",
+            "source": {
+              "cell": "05a1c0f1-b291-4938-872b-4c62b53e82fe",
+              "port": "d48f83c5-b3c4-49c5-931e-d2427aa8a4ac"
+            },
+            "target": {
+              "cell": "52dc8d94-5ea0-4760-8c4f-22987df01a11",
               "port": "ede51884-a8b0-415e-828c-0e67f4c3febe"
             },
             "vertices": [
               {
-                "x": 460,
+                "x": 1000,
                 "y": 420
-              },
-              {
-                "x": 616.25,
-                "y": 340
               }
             ]
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "(8) Read & Write client records from plaid to SQL ",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": []
+            },
+            "labels": [
+              "(8) Read & Write client records from plaid to SQL "
+            ],
+            "id": "5ac1ce6d-95c7-4b1f-a3e4-a3a5da20890f",
+            "source": {
+              "cell": "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
+              "port": "2f6413a2-6c20-4f75-ac6f-c2257b359059"
+            },
+            "target": {
+              "cell": "006d38f1-2ad4-4271-bd37-d11c9c376947",
+              "port": "2f6413a2-6c20-4f75-ac6f-c2257b359059"
+            },
+            "vertices": [
+              {
+                "x": 170,
+                "y": 650
+              }
+            ]
+          },
+          {
+            "position": {
+              "x": 1058,
+              "y": 90
+            },
+            "size": {
+              "width": 112.5,
+              "height": 60
+            },
+            "attrs": {
+              "text": {
+                "text": "Meade CPA Client"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": "4 3"
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "ports": {
+              "groups": {
+                "top": {
+                  "position": "top",
+                  "attrs": {
+                    "circle": {
+                      "r": 4,
+                      "magnet": true,
+                      "stroke": "#5F95FF",
+                      "strokeWidth": 1,
+                      "fill": "#fff",
+                      "style": {
+                        "visibility": "hidden"
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "position": "right",
+                  "attrs": {
+                    "circle": {
+                      "r": 4,
+                      "magnet": true,
+                      "stroke": "#5F95FF",
+                      "strokeWidth": 1,
+                      "fill": "#fff",
+                      "style": {
+                        "visibility": "hidden"
+                      }
+                    }
+                  }
+                },
+                "bottom": {
+                  "position": "bottom",
+                  "attrs": {
+                    "circle": {
+                      "r": 4,
+                      "magnet": true,
+                      "stroke": "#5F95FF",
+                      "strokeWidth": 1,
+                      "fill": "#fff",
+                      "style": {
+                        "visibility": "hidden"
+                      }
+                    }
+                  }
+                },
+                "left": {
+                  "position": "left",
+                  "attrs": {
+                    "circle": {
+                      "r": 4,
+                      "magnet": true,
+                      "stroke": "#5F95FF",
+                      "strokeWidth": 1,
+                      "fill": "#fff",
+                      "style": {
+                        "visibility": "hidden"
+                      }
+                    }
+                  }
+                }
+              },
+              "items": [
+                {
+                  "group": "top",
+                  "id": "1bb87996-557a-4dcc-8541-55a6d6f79383"
+                },
+                {
+                  "group": "right",
+                  "id": "5c292db3-568a-40b4-b016-bf2ce2215409"
+                },
+                {
+                  "group": "bottom",
+                  "id": "d48f83c5-b3c4-49c5-931e-d2427aa8a4ac"
+                },
+                {
+                  "group": "left",
+                  "id": "b484ad48-2cb5-4f7c-814d-db745549a949"
+                }
+              ]
+            },
+            "id": "05a1c0f1-b291-4938-872b-4c62b53e82fe",
+            "zIndex": 11,
+            "data": {
+              "type": "tm.Actor",
+              "name": "Meade CPA Client",
+              "description": "",
+              "isTrustBoundary": false,
+              "outOfScope": true,
+              "reasonOutOfScope": "Only touches hosted link connection to Pliad",
+              "hasOpenThreats": false,
+              "providesAuthentication": false,
+              "threats": []
+            }
           }
         ],
         "description": "Data flow for connecting a client's bank account via Plaid. Staff log in and request a bank link for a client through Azure Functions, which requests a link token from Plaid and returns it to the browser. Staff then deliver the resulting link to the bank client manually, outside the app, since the bank client never has a session with this application directly. The bank client completes Plaid's Hosted Link on their own, entering bank credentials with Plaid only. Plaid then sends a webhook back to Azure Functions, which writes the resulting account and token data to Azure SQL."
