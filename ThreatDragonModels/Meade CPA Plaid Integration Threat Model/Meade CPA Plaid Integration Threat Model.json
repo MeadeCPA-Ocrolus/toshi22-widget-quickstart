@@ -121,8 +121,7 @@
               "crossingFlows": [
                 "56030d7a-0126-4c4d-9ba4-ce73ff3d1558",
                 "a4440d35-d273-4978-bf87-b4a17b0af6fb",
-                "246e9b61-3e6f-4e82-9245-57cc978ec1ae",
-                "06639423-e23a-4878-808e-d3a584922a73"
+                "246e9b61-3e6f-4e82-9245-57cc978ec1ae"
               ],
               "containedElements": [
                 "52dc8d94-5ea0-4760-8c4f-22987df01a11"
@@ -890,12 +889,12 @@
             },
             "vertices": [
               {
-                "x": 560,
-                "y": 480
+                "x": 610,
+                "y": 450
               },
               {
-                "x": 520,
-                "y": 480
+                "x": 510,
+                "y": 450
               }
             ]
           },
@@ -1025,7 +1024,7 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "(7) Client completes Hosted Link,\nbank credentials to Plaid only",
+              "name": "(6) Client completes Hosted Link",
               "description": "",
               "outOfScope": false,
               "isTrustBoundary": false,
@@ -1041,7 +1040,7 @@
               ]
             },
             "labels": [
-              "(7) Client completes Hosted Link,\nbank credentials to Plaid only"
+              "(6) Client completes Hosted Link"
             ],
             "id": "246e9b61-3e6f-4e82-9245-57cc978ec1ae",
             "source": {
@@ -1131,7 +1130,7 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "(5) Delivers hosted link\nby SMS or email",
+              "name": "Data Flow",
               "description": "",
               "outOfScope": false,
               "isTrustBoundary": false,
@@ -1142,28 +1141,66 @@
               "isPublicNetwork": false,
               "protocol": "",
               "threats": [],
-              "trustBoundaryIds": [
-                "f433223f-162e-4736-8fcf-467e9a11f7c7"
-              ]
+              "trustBoundaryIds": []
             },
             "labels": [
-              "(5) Delivers hosted link\nby SMS or email"
+              "(7) "
             ],
-            "id": "06639423-e23a-4878-808e-d3a584922a73",
+            "id": "74e327db-b8fa-48ca-a233-24b02e204dd9",
             "source": {
-              "x": 1120,
-              "y": 160
+              "x": 360,
+              "y": 620
             },
             "target": {
-              "cell": "52dc8d94-5ea0-4760-8c4f-22987df01a11",
-              "port": "550134dd-57e1-40f5-a8b7-162fa4e56b98"
-            },
-            "vertices": [
-              {
-                "x": 940,
-                "y": 340
+              "x": 766,
+              "y": 624
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
               }
-            ]
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "dh",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": []
+            },
+            "labels": [
+              "dh"
+            ],
+            "id": "6f9523a1-e374-436c-9ef6-3325b48bd707",
+            "source": {
+              "x": 789,
+              "y": 484
+            },
+            "target": {
+              "x": 889,
+              "y": 584
+            }
           },
           {
             "position": {
