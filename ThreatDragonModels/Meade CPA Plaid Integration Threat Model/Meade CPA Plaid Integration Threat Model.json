@@ -51,8 +51,8 @@
               "isTrustBoundary": true,
               "hasOpenThreats": false,
               "crossingFlows": [
-                "f6a24d17-364b-4d98-8a3c-12e90d521331",
-                "c7cbba68-1798-4c25-8aa4-15e324004991"
+                "c7cbba68-1798-4c25-8aa4-15e324004991",
+                "f6a24d17-364b-4d98-8a3c-12e90d521331"
               ],
               "containedElements": [
                 "e26a11eb-7ff6-4388-867c-a27a0f798dfa"
@@ -84,9 +84,10 @@
               "isTrustBoundary": true,
               "hasOpenThreats": false,
               "crossingFlows": [
-                "f6a24d17-364b-4d98-8a3c-12e90d521331",
                 "56030d7a-0126-4c4d-9ba4-ce73ff3d1558",
-                "a4440d35-d273-4978-bf87-b4a17b0af6fb"
+                "a4440d35-d273-4978-bf87-b4a17b0af6fb",
+                "815f7ad4-938f-4b1d-b9f3-9a8e98b00911",
+                "f6a24d17-364b-4d98-8a3c-12e90d521331"
               ],
               "containedElements": [
                 "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
@@ -745,65 +746,6 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "(2) Clicks send bank link, sends authenticated req ",
-              "description": "",
-              "outOfScope": false,
-              "isTrustBoundary": false,
-              "reasonOutOfScope": "",
-              "hasOpenThreats": false,
-              "isBidirectional": false,
-              "isEncrypted": false,
-              "isPublicNetwork": false,
-              "protocol": "",
-              "threats": [],
-              "trustBoundaryIds": [
-                "8a08f080-40e9-4d98-876e-bb2aa4aaa1fe",
-                "eb94f471-b3e4-4113-873f-b1357884b4dd"
-              ]
-            },
-            "labels": [
-              "(2) Clicks send bank link, sends authenticated req "
-            ],
-            "id": "f6a24d17-364b-4d98-8a3c-12e90d521331",
-            "source": {
-              "cell": "e26a11eb-7ff6-4388-867c-a27a0f798dfa",
-              "port": "2f6413a2-6c20-4f75-ac6f-c2257b359059"
-            },
-            "target": {
-              "cell": "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
-              "port": "ede51884-a8b0-415e-828c-0e67f4c3febe"
-            },
-            "vertices": [
-              {
-                "x": 230,
-                "y": 330
-              },
-              {
-                "x": 310,
-                "y": 530
-              }
-            ]
-          },
-          {
-            "shape": "flow",
-            "attrs": {
-              "line": {
-                "stroke": "#333333",
-                "targetMarker": {
-                  "name": "block"
-                },
-                "sourceMarker": {
-                  "name": ""
-                },
-                "strokeDasharray": null
-              }
-            },
-            "width": 200,
-            "height": 100,
-            "zIndex": 10,
-            "connector": "smooth",
-            "data": {
-              "type": "tm.Flow",
               "name": "(3) Request Link Token",
               "description": "",
               "outOfScope": false,
@@ -1078,7 +1020,7 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "(8) Read & Write client records from plaid to SQL ",
+              "name": "(8) Write client records from plaid to SQL ",
               "description": "",
               "outOfScope": false,
               "isTrustBoundary": false,
@@ -1092,7 +1034,7 @@
               "trustBoundaryIds": []
             },
             "labels": [
-              "(8) Read & Write client records from plaid to SQL "
+              "(8) Write client records from plaid to SQL "
             ],
             "id": "5ac1ce6d-95c7-4b1f-a3e4-a3a5da20890f",
             "source": {
@@ -1130,7 +1072,7 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "Data Flow",
+              "name": "(5) Delivers hosted link\nby SMS or email",
               "description": "",
               "outOfScope": false,
               "isTrustBoundary": false,
@@ -1144,17 +1086,23 @@
               "trustBoundaryIds": []
             },
             "labels": [
-              "(7) "
+              "(5) Delivers hosted link\nby SMS or email"
             ],
-            "id": "74e327db-b8fa-48ca-a233-24b02e204dd9",
+            "id": "6f9523a1-e374-436c-9ef6-3325b48bd707",
             "source": {
-              "x": 360,
-              "y": 620
+              "x": 789,
+              "y": 484
             },
             "target": {
-              "x": 766,
-              "y": 624
-            }
+              "cell": "05a1c0f1-b291-4938-872b-4c62b53e82fe",
+              "port": "d48f83c5-b3c4-49c5-931e-d2427aa8a4ac"
+            },
+            "vertices": [
+              {
+                "x": 840,
+                "y": 380
+              }
+            ]
           },
           {
             "shape": "flow",
@@ -1176,7 +1124,7 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "dh",
+              "name": "(7) Webhook Session Finished",
               "description": "",
               "outOfScope": false,
               "isTrustBoundary": false,
@@ -1187,20 +1135,87 @@
               "isPublicNetwork": false,
               "protocol": "",
               "threats": [],
-              "trustBoundaryIds": []
+              "trustBoundaryIds": [
+                "eb94f471-b3e4-4113-873f-b1357884b4dd"
+              ]
             },
             "labels": [
-              "dh"
+              "(7) Webhook Session Finished"
             ],
-            "id": "6f9523a1-e374-436c-9ef6-3325b48bd707",
+            "id": "815f7ad4-938f-4b1d-b9f3-9a8e98b00911",
             "source": {
-              "x": 789,
-              "y": 484
+              "x": 785,
+              "y": 584
             },
             "target": {
-              "x": 889,
-              "y": 584
-            }
+              "cell": "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
+              "port": "9b626264-f3fe-4d23-8a98-510968923839"
+            },
+            "vertices": [
+              {
+                "x": 660,
+                "y": 660
+              }
+            ]
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "(2) Clicks send bank link, sends authenticated req ",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": [
+                "8a08f080-40e9-4d98-876e-bb2aa4aaa1fe",
+                "eb94f471-b3e4-4113-873f-b1357884b4dd"
+              ]
+            },
+            "labels": [
+              "(2) Clicks send bank link, sends authenticated req "
+            ],
+            "id": "f6a24d17-364b-4d98-8a3c-12e90d521331",
+            "source": {
+              "cell": "e26a11eb-7ff6-4388-867c-a27a0f798dfa",
+              "port": "2f6413a2-6c20-4f75-ac6f-c2257b359059"
+            },
+            "target": {
+              "cell": "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
+              "port": "550134dd-57e1-40f5-a8b7-162fa4e56b98"
+            },
+            "vertices": [
+              {
+                "x": 230,
+                "y": 330
+              },
+              {
+                "x": 250,
+                "y": 460
+              }
+            ]
           },
           {
             "position": {
