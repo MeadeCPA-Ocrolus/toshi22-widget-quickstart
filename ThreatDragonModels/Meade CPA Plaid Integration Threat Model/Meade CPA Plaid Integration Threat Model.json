@@ -52,8 +52,7 @@
               "hasOpenThreats": false,
               "crossingFlows": [
                 "f6a24d17-364b-4d98-8a3c-12e90d521331",
-                "c7cbba68-1798-4c25-8aa4-15e324004991",
-                "ecf23376-711a-4a02-b359-3173a4ca1163"
+                "c7cbba68-1798-4c25-8aa4-15e324004991"
               ],
               "containedElements": [
                 "e26a11eb-7ff6-4388-867c-a27a0f798dfa"
@@ -87,8 +86,7 @@
               "crossingFlows": [
                 "f6a24d17-364b-4d98-8a3c-12e90d521331",
                 "56030d7a-0126-4c4d-9ba4-ce73ff3d1558",
-                "a4440d35-d273-4978-bf87-b4a17b0af6fb",
-                "ecf23376-711a-4a02-b359-3173a4ca1163"
+                "a4440d35-d273-4978-bf87-b4a17b0af6fb"
               ],
               "containedElements": [
                 "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
@@ -123,7 +121,8 @@
               "crossingFlows": [
                 "56030d7a-0126-4c4d-9ba4-ce73ff3d1558",
                 "a4440d35-d273-4978-bf87-b4a17b0af6fb",
-                "246e9b61-3e6f-4e82-9245-57cc978ec1ae"
+                "246e9b61-3e6f-4e82-9245-57cc978ec1ae",
+                "06639423-e23a-4878-808e-d3a584922a73"
               ],
               "containedElements": [
                 "52dc8d94-5ea0-4760-8c4f-22987df01a11"
@@ -861,7 +860,7 @@
             "connector": "smooth",
             "data": {
               "type": "tm.Flow",
-              "name": "(4) Receive link token, hosted link url, then webhooks. ",
+              "name": "(4) Receive link token, status is pending",
               "description": "",
               "outOfScope": false,
               "isTrustBoundary": false,
@@ -878,7 +877,7 @@
               ]
             },
             "labels": [
-              "(4) Receive link token, hosted link url, then webhooks. "
+              "(4) Receive link token, status is pending"
             ],
             "id": "a4440d35-d273-4978-bf87-b4a17b0af6fb",
             "source": {
@@ -892,6 +891,10 @@
             "vertices": [
               {
                 "x": 560,
+                "y": 480
+              },
+              {
+                "x": 520,
                 "y": 480
               }
             ]
@@ -947,65 +950,6 @@
               {
                 "x": 680,
                 "y": 160
-              }
-            ]
-          },
-          {
-            "shape": "flow",
-            "attrs": {
-              "line": {
-                "stroke": "#333333",
-                "targetMarker": {
-                  "name": "block"
-                },
-                "sourceMarker": {
-                  "name": ""
-                },
-                "strokeDasharray": null
-              }
-            },
-            "width": 200,
-            "height": 100,
-            "zIndex": 10,
-            "connector": "smooth",
-            "data": {
-              "type": "tm.Flow",
-              "name": "(5) Return link to browser",
-              "description": "",
-              "outOfScope": false,
-              "isTrustBoundary": false,
-              "reasonOutOfScope": "",
-              "hasOpenThreats": false,
-              "isBidirectional": false,
-              "isEncrypted": false,
-              "isPublicNetwork": false,
-              "protocol": "",
-              "threats": [],
-              "trustBoundaryIds": [
-                "8a08f080-40e9-4d98-876e-bb2aa4aaa1fe",
-                "eb94f471-b3e4-4113-873f-b1357884b4dd"
-              ]
-            },
-            "labels": [
-              "(5) Return link to browser"
-            ],
-            "id": "ecf23376-711a-4a02-b359-3173a4ca1163",
-            "source": {
-              "cell": "40bdd5c7-ca40-4e66-81df-8169c69a6f46",
-              "port": "550134dd-57e1-40f5-a8b7-162fa4e56b98"
-            },
-            "target": {
-              "cell": "e26a11eb-7ff6-4388-867c-a27a0f798dfa",
-              "port": "9b626264-f3fe-4d23-8a98-510968923839"
-            },
-            "vertices": [
-              {
-                "x": 540,
-                "y": 440
-              },
-              {
-                "x": 586.25,
-                "y": 410
               }
             ]
           },
@@ -1168,6 +1112,60 @@
             ]
           },
           {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "(5) Delivers hosted link\nby SMS or email",
+              "description": "",
+              "outOfScope": false,
+              "isTrustBoundary": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "",
+              "threats": [],
+              "trustBoundaryIds": [
+                "f433223f-162e-4736-8fcf-467e9a11f7c7"
+              ]
+            },
+            "labels": [
+              "(5) Delivers hosted link\nby SMS or email"
+            ],
+            "id": "06639423-e23a-4878-808e-d3a584922a73",
+            "source": {
+              "x": 1120,
+              "y": 160
+            },
+            "target": {
+              "cell": "52dc8d94-5ea0-4760-8c4f-22987df01a11",
+              "port": "550134dd-57e1-40f5-a8b7-162fa4e56b98"
+            },
+            "vertices": [
+              {
+                "x": 940,
+                "y": 340
+              }
+            ]
+          },
+          {
             "position": {
               "x": 1058,
               "y": 90
@@ -1188,6 +1186,7 @@
             },
             "visible": true,
             "shape": "actor",
+            "zIndex": 11,
             "ports": {
               "groups": {
                 "top": {
@@ -1271,7 +1270,6 @@
               ]
             },
             "id": "05a1c0f1-b291-4938-872b-4c62b53e82fe",
-            "zIndex": 11,
             "data": {
               "type": "tm.Actor",
               "name": "Meade CPA Client",
