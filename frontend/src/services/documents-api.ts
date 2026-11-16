@@ -45,7 +45,7 @@ async function computeSha256(file: File): Promise<string> {
 export async function uploadDocument(
     clientUuid: string,
     file: File,
-    taxYear?: number
+    taxYear: number
 ): Promise<UploadResult> {
     // Step 1: get the SAS URL
     const urlResponse = await fetch(`${API_BASE_URL}/upload-url`, {
@@ -112,7 +112,7 @@ export async function uploadDocument(
 export async function uploadDocuments(
     clientUuid: string,
     files: File[],
-    taxYear?: number
+    taxYear: number
 ): Promise<Array<UploadResult | { filename: string; error: string }>> {
     const results: Array<UploadResult | { filename: string; error: string }> = [];
 
