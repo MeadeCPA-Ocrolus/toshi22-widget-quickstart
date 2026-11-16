@@ -21,7 +21,6 @@ import {
     isUuid, isSha256Hex, validateFilenameAndYear, cleanFilename, getExtension,
     expectedBlobPrefix, headMatchesExtension, getMaxBytes,
 } from '../shared/upload-validation';
-import { getDefaultTaxYear } from '../shared/tax-year';
 import { executeQuery } from '../shared/database';
 import { allowOriginHeader } from '../shared/http';
 import { redact } from '../shared/safe-log';
@@ -50,7 +49,7 @@ interface ConfirmUploadRequest {
     blobPath: string;
     filename: string;
     sha256Hash: string;
-    taxYear?: number;
+    taxYear: number;
 }
 
 const httpTrigger: AzureFunction = async function (
@@ -137,7 +136,7 @@ const httpTrigger: AzureFunction = async function (
             return bad(400, validation.error as string);
         }
 
-        const taxYear = body.taxYear || getDefaultTaxYear();
+        const taxYear = body.taxYear; // validated above: required whole year
 
         // The blob path must be exactly the one /api/upload-url issued for this
         // client, year and document. This stops someone confirming (and so
