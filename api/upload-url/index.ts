@@ -18,6 +18,7 @@ import { requireAuth } from '../shared/auth';
 import { buildBlobPath, generateUploadSasUrl } from '../shared/storage';
 import { getDefaultTaxYear } from '../shared/tax-year';
 import { executeQuery } from '../shared/database';
+import { isUuid, validateFilenameAndYear, getMaxBytes } from '../shared/upload-validation';
 import { allowOriginHeader } from '../shared/http';
 import { redact } from '../shared/safe-log';
 
@@ -31,6 +32,8 @@ interface UploadUrlRequest {
     clientUuid: string;
     filename: string;
     taxYear?: number;
+    /** Optional. Size in bytes the browser intends to upload, checked against the limit up front. */
+    fileSize?: number;
 }
 
 const httpTrigger: AzureFunction = async function (
@@ -53,6 +56,35 @@ const httpTrigger: AzureFunction = async function (
             context.res = {
                 status: 400,
                 body: { error: 'clientUuid and filename are required' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            };
+            return;
+        }
+
+        if (!isUuid(body.clientUuid)) {
+            context.res = {
+                status: 400,
+                body: { error: 'clientUuid is not valid' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            };
+            return;
+        }
+
+        const validation = validateFilenameAndYear(body.filename, body.taxYear);
+        if (!validation.ok) {
+            context.res = {
+                status: 400,
+                body: { error: validation.error },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            };
+            return;
+        }
+
+        const maxBytes = getMaxBytes();
+        if (body.fileSize !== undefined && (typeof body.fileSize !== 'number' || body.fileSize <= 0 || body.fileSize > maxBytes)) {
+            context.res = {
+                status: 413,
+                body: { error: `File is too large. The limit is ${Math.floor(maxBytes / (1024 * 1024))} MB`, maxBytes },
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             };
             return;
@@ -89,6 +121,7 @@ const httpTrigger: AzureFunction = async function (
                 sasUrl,
                 expiresAt: expiresAt.toISOString(),
                 taxYear,
+                maxBytes,
             },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };
