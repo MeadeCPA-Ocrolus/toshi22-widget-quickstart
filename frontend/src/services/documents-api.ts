@@ -51,7 +51,7 @@ export async function uploadDocument(
     const urlResponse = await fetch(`${API_BASE_URL}/upload-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientUuid, filename: file.name, taxYear }),
+        body: JSON.stringify({ clientUuid, filename: file.name, taxYear, fileSize: file.size }),
     });
 
     if (!urlResponse.ok) {

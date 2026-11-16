@@ -87,6 +87,49 @@ export async function generateUploadSasUrl(blobPath: string): Promise<{ sasUrl: 
     return { sasUrl, expiresAt };
 }
 
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+}
+
+/**
+ * Reads the first few bytes of a stored blob so the API can check the real
+ * file type (magic bytes) instead of trusting the file name.
+ */
+export async function readBlobHead(blobPath: string, bytes = 16): Promise<Buffer> {
+    const { client } = getBlobClients();
+    const blockBlobClient = client.getContainerClient(CONTAINER_NAME).getBlockBlobClient(blobPath);
+    const response = await blockBlobClient.download(0, bytes);
+    if (!response.readableStreamBody) return Buffer.alloc(0);
+    return streamToBuffer(response.readableStreamBody);
+}
+
+/**
+ * Computes the SHA-256 of a stored blob by streaming it, so the API never
+ * trusts a hash supplied by the browser.
+ */
+export async function computeBlobSha256(blobPath: string): Promise<string> {
+    const { createHash } = await import('crypto');
+    const { client } = getBlobClients();
+    const blockBlobClient = client.getContainerClient(CONTAINER_NAME).getBlockBlobClient(blobPath);
+    const response = await blockBlobClient.download();
+    if (!response.readableStreamBody) throw new Error('Blob has no content');
+    const hash = createHash('sha256');
+    for await (const chunk of response.readableStreamBody) {
+        hash.update(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return hash.digest('hex');
+}
+
+/** Deletes a rejected upload so bad files do not stay in storage. */
+export async function deleteBlob(blobPath: string): Promise<void> {
+    const { client } = getBlobClients();
+    await client.getContainerClient(CONTAINER_NAME).getBlockBlobClient(blobPath).deleteIfExists();
+}
+
 /**
  * Confirms a blob actually exists and returns its size — called after the
  * browser reports the upload is done, so we don't trust the client's word

@@ -11,6 +11,7 @@
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { requireAuth } from '../shared/auth';
+import { serverError, allowOriginHeader } from '../shared/http';
 
 // ============================================================================
 // Types
@@ -110,7 +111,7 @@ interface LiabilitiesResponse {
 // ============================================================================
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -181,12 +182,7 @@ const httpTrigger: AzureFunction = async function (
         };
 
     } catch (err) {
-        context.log.error('Liabilities handler error:', err);
-        context.res = {
-            status: 500,
-            body: { error: 'Internal server error', message: err instanceof Error ? err.message : 'Unknown' },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Liabilities handler error', err, corsHeaders);
     }
 };
 

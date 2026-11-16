@@ -19,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { requireAuth } from '../shared/auth';
+import { serverError, allowOriginHeader } from '../shared/http';
 
 /**
  * Client record from database
@@ -59,7 +60,7 @@ interface ClientWithCounts extends ClientRecord {
  * CORS headers for all responses
  */
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -129,19 +130,7 @@ const httpTrigger: AzureFunction = async function (
         }
 
     } catch (error) {
-        context.log.error('Clients endpoint error:', error);
-        context.res = {
-            status: 500,
-            body: {
-                error: 'Internal server error',
-                message: error instanceof Error ? error.message : 'Unknown error',
-
-                node: process.version,
-                hasDbConnString: Boolean(process.env.SQL_CONNECTION_STRING || process.env.DB_CONNECTION_STRING),
-                
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Clients endpoint error', error, corsHeaders);
     }
 };
 
@@ -555,7 +544,7 @@ async function deleteClient(context: Context, clientId: number): Promise<void> {
     }
 
     const client = existingResult.recordset[0];
-    context.log(`Archiving client: ${client.first_name} ${client.last_name} (ID: ${clientId})`);
+    context.log(`Archiving client ID ${clientId}`);
 
     // Get all item IDs for this client (for cascade)
     const itemsResult = await executeQuery<{ item_id: number }>(

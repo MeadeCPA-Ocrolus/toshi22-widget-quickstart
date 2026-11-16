@@ -33,6 +33,8 @@ import {
     archiveInvestmentsForItem,
     archiveInvestmentsForAccounts,
 } from '../shared/investments-sync-service';
+import { serverError, allowOriginHeader } from '../shared/http';
+import { redact } from '../shared/safe-log';
 
 // OAuth institutions - these use OAuth flow instead of credential-based
 // This list is not exhaustive but covers major OAuth banks
@@ -283,7 +285,7 @@ async function updateItemStatus(
                     );
                     context.log(`Archived transactions for item ${internalItemId}`);
                 } catch (txnError) {
-                    context.log.warn(`Could not archive transactions: ${txnError}`);
+                    context.log.warn(`Could not archive transactions: ${redact(txnError)}`);
                 }
                 
                 // Archive liabilities
@@ -291,7 +293,7 @@ async function updateItemStatus(
                     await archiveLiabilitiesForItem(internalItemId, 'item_archived');
                     context.log(`Archived liabilities for item ${internalItemId}`);
                 } catch (liabError) {
-                    context.log.warn(`Could not archive liabilities: ${liabError}`);
+                    context.log.warn(`Could not archive liabilities: ${redact(liabError)}`);
                 }
                 
                 // Archive investments
@@ -299,7 +301,7 @@ async function updateItemStatus(
                     await archiveInvestmentsForItem(internalItemId, 'item_archived');
                     context.log(`Archived investments for item ${internalItemId}`);
                 } catch (invError) {
-                    context.log.warn(`Could not archive investments: ${invError}`);
+                    context.log.warn(`Could not archive investments: ${redact(invError)}`);
                 }
             }
             break;
@@ -608,7 +610,7 @@ async function handleAccountRevoked(
             await archiveLiabilitiesForAccounts([accountId], 'account_revoked');
             context.log(`Archived liabilities for account ${accountId}`);
         } catch (err) {
-            context.log.warn(`Could not archive liabilities for account: ${err}`);
+            context.log.warn(`Could not archive liabilities for account: ${redact(err)}`);
         }
         
         // Archive investments for this account
@@ -616,7 +618,7 @@ async function handleAccountRevoked(
             await archiveInvestmentsForAccounts([accountId], 'account_revoked');
             context.log(`Archived investments for account ${accountId}`);
         } catch (err) {
-            context.log.warn(`Could not archive investments for account: ${err}`);
+            context.log.warn(`Could not archive investments for account: ${redact(err)}`);
         }
     }
 }
@@ -802,7 +804,7 @@ async function processSinglePublicToken(
             }
         } catch (removeErr) {
             // Expected to fail if item already invalid (e.g., Chase/PNC auto-invalidation)
-            context.log.warn(`${logPrefix}Could not remove old Plaid item (may already be invalid): ${removeErr}`);
+            context.log.warn(`${logPrefix}Could not remove old Plaid item (may already be invalid): ${redact(removeErr)}`);
         }
         
         // Update the existing item with the new plaid_item_id and access_token
@@ -916,7 +918,7 @@ async function processSinglePublicToken(
                     accountId,
                 }
             );
-            context.log(`${logPrefix}Updated existing account: ${account.name} (${account.account_id})`);
+            context.log(`${logPrefix}Updated existing account ${account.account_id}`);
             
         } else {
             // No match - create new account
@@ -949,7 +951,7 @@ async function processSinglePublicToken(
                     creditLimit: account.balances.limit,
                 }
             );
-            context.log(`${logPrefix}Created new account: ${account.name} (mask: ${mask})`);
+            context.log(`${logPrefix}Created new account ${account.account_id}`);
         }
         
         processedPlaidAccountIds.push(account.account_id);
@@ -1052,7 +1054,7 @@ async function processSinglePublicToken(
             );
         }
     } catch (syncErr) {
-        context.log.warn(`${logPrefix}Could not perform initial transaction sync (non-fatal): ${syncErr}`);
+        context.log.warn(`${logPrefix}Could not perform initial transaction sync (non-fatal): ${redact(syncErr)}`);
         // Set flag so CPA can retry
         await executeQuery(
             `UPDATE items SET has_sync_updates = 1, updated_at = GETDATE() WHERE item_id = @itemId`,
@@ -1077,7 +1079,7 @@ async function processSinglePublicToken(
         }
     } catch (liabErr) {
         // Non-fatal - liabilities product might not be enabled or supported
-        context.log.warn(`${logPrefix}Could not perform initial liabilities sync (non-fatal): ${liabErr}`);
+        context.log.warn(`${logPrefix}Could not perform initial liabilities sync (non-fatal): ${redact(liabErr)}`);
     }
 
     // Step 9: Perform initial investments sync (holdings + investment transactions)
@@ -1099,7 +1101,7 @@ async function processSinglePublicToken(
         }
     } catch (invErr) {
         // Non-fatal - investments product might not be enabled or supported
-        context.log.warn(`${logPrefix}Could not perform initial investments sync (non-fatal): ${invErr}`);
+        context.log.warn(`${logPrefix}Could not perform initial investments sync (non-fatal): ${redact(invErr)}`);
     }
 
     return { itemId, plaidItemId, institutionName, isDuplicate, isOAuth };
@@ -1182,7 +1184,7 @@ async function handleSessionFinished(
         );
     } catch (sessionErr) {
         // Table might not exist yet - log but continue
-        context.log.warn(`Could not insert link_session (table may not exist): ${sessionErr}`);
+        context.log.warn(`Could not insert link_session (table may not exist): ${redact(sessionErr)}`);
     }
 
     // Update link_tokens with session info
@@ -1205,7 +1207,7 @@ async function handleSessionFinished(
         );
     } catch (updateErr) {
         // Columns might not exist yet - log but continue
-        context.log.warn(`Could not update link_token session info: ${updateErr}`);
+        context.log.warn(`Could not update link_token session info: ${redact(updateErr)}`);
     }
 
     // Handle non-success statuses
@@ -1215,8 +1217,8 @@ async function handleSessionFinished(
         
         // Log details for CPA visibility
         if (errorCode) {
-            context.log(`Error code: ${errorCode}`);
-            context.log(`Error message: ${errorMessage}`);
+            context.log(`Error code: ${redact(errorCode)}`);
+            context.log(`Error message: ${redact(errorMessage)}`);
         }
 
         // Determine what happened and log appropriately
@@ -1318,7 +1320,7 @@ async function handleSessionFinished(
             
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
-            context.log.error(`Error processing token ${i + 1}: ${errorMsg}`);
+            context.log.error(`Error processing token ${i + 1}: ${redact(errorMsg)}`);
             
             results.push({
                 itemId: 0,
@@ -1390,7 +1392,7 @@ const httpTrigger: AzureFunction = async function (
     req: HttpRequest
 ): Promise<void> {
     const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
+        ...allowOriginHeader(),
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Plaid-Verification',
     };
@@ -1521,7 +1523,7 @@ const httpTrigger: AzureFunction = async function (
 
         } catch (err) {
             processingError = err instanceof Error ? err.message : String(err);
-            context.log.error(`Error processing webhook: ${processingError}`);
+            context.log.error(`Error processing webhook: ${redact(processingError)}`);
         }
 
         if (logId) {
@@ -1540,16 +1542,7 @@ const httpTrigger: AzureFunction = async function (
         };
 
     } catch (err) {
-        context.log.error('Webhook handler error (early failure):', err);
-        
-        context.res = {
-            status: 500,
-            body: { 
-                error: 'Internal server error',
-                message: err instanceof Error ? err.message : 'Unknown error',
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Webhook handler error (early failure)', err, corsHeaders);
     }
 };
 

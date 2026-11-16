@@ -11,6 +11,7 @@
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { requireAuth } from '../shared/auth';
+import { serverError, allowOriginHeader } from '../shared/http';
 
 /**
  * Item record from database
@@ -62,7 +63,7 @@ const httpTrigger: AzureFunction = async function (
     req: HttpRequest
 ): Promise<void> {
     const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
+        ...allowOriginHeader(),
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     };
@@ -191,15 +192,7 @@ const httpTrigger: AzureFunction = async function (
         };
 
     } catch (error) {
-        context.log.error('Client items endpoint error:', error);
-        context.res = {
-            status: 500,
-            body: {
-                error: 'Internal server error',
-                message: error instanceof Error ? error.message : 'Unknown error',
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Client items endpoint error', error, corsHeaders);
     }
 };
 

@@ -20,11 +20,13 @@ import { PassThrough } from 'stream';
 import { requireAuth } from '../shared/auth';
 import { executeQuery } from '../shared/database';
 import { toCsv, sanitizeFilename } from '../shared/csv-export';
+import { allowOriginHeader } from '../shared/http';
+import { redact } from '../shared/safe-log';
 
 const { ZipArchive } = require('archiver');
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ms-client-principal',
 };
@@ -377,7 +379,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         };
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Export failed: ${errorMessage}`);
+        context.log.error(`Export failed: ${redact(errorMessage)}`);
         context.res = {
             status: 500,
             body: { error: 'Failed to generate export' },

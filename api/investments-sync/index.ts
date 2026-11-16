@@ -16,9 +16,10 @@ import { decrypt } from '../shared/encryption';
 import { getPlaidClient } from '../shared/plaid-client';
 import { syncInvestmentsForItem } from '../shared/investments-sync-service';
 import { requireAuth } from '../shared/auth';
+import { serverError, allowOriginHeader } from '../shared/http';
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -138,16 +139,7 @@ const httpTrigger: AzureFunction = async function (
         };
 
     } catch (err) {
-        context.log.error('Investments sync endpoint error:', err);
-
-        context.res = {
-            status: 500,
-            body: {
-                error: 'Internal server error',
-                message: err instanceof Error ? err.message : 'Unknown error',
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Investments sync endpoint error', err, corsHeaders);
     }
 };
 

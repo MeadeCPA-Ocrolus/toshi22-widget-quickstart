@@ -10,6 +10,7 @@
 import { Context } from '@azure/functions';
 import { PlaidApi, CreditCardLiability, StudentLoan, MortgageLiability } from 'plaid';
 import { executeQuery } from './database';
+import { logError } from './safe-log';
 
 // ============================================================================
 // Types
@@ -87,7 +88,7 @@ export async function syncLiabilitiesForItem(
         context.log(`Liabilities sync complete for item ${itemId}`);
 
     } catch (err: any) {
-        context.log.error(`Liabilities sync failed for item ${itemId}:`, err);
+        logError(context, `Liabilities sync failed for item ${itemId}`, err);
         
         // Extract Plaid error details
         const plaidErrorCode = err.response?.data?.error_code;
