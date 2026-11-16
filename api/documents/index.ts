@@ -19,9 +19,11 @@ import { requireAuth, getStaffIdentity, ClientPrincipal } from '../shared/auth';
 import { verifyBlobExists } from '../shared/storage';
 import { getDefaultTaxYear } from '../shared/tax-year';
 import { executeQuery } from '../shared/database';
+import { allowOriginHeader } from '../shared/http';
+import { redact } from '../shared/safe-log';
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ms-client-principal',
 };
@@ -84,7 +86,7 @@ const httpTrigger: AzureFunction = async function (
         }
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Documents endpoint error: ${errorMessage}`);
+        context.log.error(`Documents endpoint error: ${redact(errorMessage)}`);
         context.res = {
             status: 500,
             body: { error: 'Internal server error' },
@@ -167,7 +169,7 @@ const httpTrigger: AzureFunction = async function (
             }
         );
 
-        ctx.log(`Document ${body.docId} saved for client ${body.clientUuid} (uploaded by ${staffIdentity})`);
+        ctx.log(`Document ${body.docId} saved for client ${body.clientUuid}`);
 
         ctx.res = {
             status: 201,

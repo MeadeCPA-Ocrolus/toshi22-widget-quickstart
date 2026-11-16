@@ -18,9 +18,11 @@ import { requireAuth } from '../shared/auth';
 import { buildBlobPath, generateUploadSasUrl } from '../shared/storage';
 import { getDefaultTaxYear } from '../shared/tax-year';
 import { executeQuery } from '../shared/database';
+import { allowOriginHeader } from '../shared/http';
+import { redact } from '../shared/safe-log';
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ms-client-principal',
 };
@@ -92,7 +94,7 @@ const httpTrigger: AzureFunction = async function (
         };
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Failed to generate upload URL: ${errorMessage}`);
+        context.log.error(`Failed to generate upload URL: ${redact(errorMessage)}`);
         context.res = {
             status: 500,
             body: { error: 'Failed to generate upload URL' },

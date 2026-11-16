@@ -14,6 +14,8 @@ import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { decrypt } from '../shared/encryption';
 import { requireAuth } from '../shared/auth';
+import { serverError, allowOriginHeader } from '../shared/http';
+import { redact } from '../shared/safe-log';
 
 /**
  * Item record from database
@@ -82,7 +84,7 @@ interface ItemWithAccounts {
  * CORS headers for all responses
  */
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -145,15 +147,7 @@ const httpTrigger: AzureFunction = async function (
         }
 
     } catch (error) {
-        context.log.error('Items endpoint error:', error);
-        context.res = {
-            status: 500,
-            body: {
-                error: 'Internal server error',
-                message: error instanceof Error ? error.message : 'Unknown error',
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Items endpoint error', error, corsHeaders);
     }
 };
 
@@ -312,7 +306,7 @@ async function deleteItem(
             context.log(`Removed item from Plaid: ${item.plaid_item_id}`);
         } catch (plaidError) {
             // Log but don't fail - we still want to clean up our database
-            context.log.warn(`Failed to remove item from Plaid: ${plaidError}`);
+            context.log.warn(`Failed to remove item from Plaid: ${redact(plaidError)}`);
             // Continue with local deletion
         }
     }
