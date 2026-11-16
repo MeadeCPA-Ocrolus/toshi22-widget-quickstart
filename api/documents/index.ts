@@ -16,12 +16,18 @@
 
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { requireAuth, getStaffIdentity, ClientPrincipal } from '../shared/auth';
-import { verifyBlobExists } from '../shared/storage';
+import { verifyBlobExists, readBlobHead, computeBlobSha256, deleteBlob } from '../shared/storage';
+import {
+    isUuid, isSha256Hex, validateFilenameAndYear, cleanFilename, getExtension,
+    expectedBlobPrefix, headMatchesExtension, getMaxBytes,
+} from '../shared/upload-validation';
 import { getDefaultTaxYear } from '../shared/tax-year';
 import { executeQuery } from '../shared/database';
+import { allowOriginHeader } from '../shared/http';
+import { redact } from '../shared/safe-log';
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ms-client-principal',
 };
@@ -84,7 +90,7 @@ const httpTrigger: AzureFunction = async function (
         }
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Documents endpoint error: ${errorMessage}`);
+        context.log.error(`Documents endpoint error: ${redact(errorMessage)}`);
         context.res = {
             status: 500,
             body: { error: 'Internal server error' },
@@ -111,17 +117,81 @@ const httpTrigger: AzureFunction = async function (
             return;
         }
 
-        const blob = await verifyBlobExists(body.blobPath);
-        if (!blob.exists) {
+        const bad = (status: number, error: string) => {
             ctx.res = {
-                status: 400,
-                body: { error: 'Upload not found in storage — the SAS URL may have expired before the upload completed' },
+                status,
+                body: { error },
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             };
-            return;
+        };
+
+        // ---- Shape checks (nothing touches storage or the database yet) ----
+        if (!isUuid(body.docId) || !isUuid(body.clientUuid)) {
+            return bad(400, 'docId and clientUuid must be valid ids');
+        }
+        if (!isSha256Hex(body.sha256Hash)) {
+            return bad(400, 'sha256Hash must be a 64-character hex string');
+        }
+        const validation = validateFilenameAndYear(body.filename, body.taxYear);
+        if (!validation.ok) {
+            return bad(400, validation.error as string);
         }
 
         const taxYear = body.taxYear || getDefaultTaxYear();
+
+        // The blob path must be exactly the one /api/upload-url issued for this
+        // client, year and document. This stops someone confirming (and so
+        // "claiming") a file that belongs to another client or path.
+        if (typeof body.blobPath !== 'string' || !body.blobPath.startsWith(expectedBlobPrefix(body.clientUuid, taxYear, body.docId))) {
+            return bad(400, 'blobPath does not match this upload');
+        }
+
+        const clientCheck = await executeQuery<{ client_id: number }>(
+            `SELECT client_id FROM clients WHERE client_uuid = @clientUuid AND is_archived = 0`,
+            { clientUuid: body.clientUuid }
+        );
+        if (clientCheck.recordset.length === 0) {
+            return bad(404, 'Client not found');
+        }
+
+        const alreadySaved = await executeQuery<{ doc_id: string }>(
+            `SELECT doc_id FROM documents WHERE doc_id = @docId`,
+            { docId: body.docId }
+        );
+        if (alreadySaved.recordset.length > 0) {
+            return bad(409, 'This upload was already confirmed');
+        }
+
+        // ---- Storage checks: the browser uploaded directly, so inspect what actually arrived ----
+        const blob = await verifyBlobExists(body.blobPath);
+        if (!blob.exists) {
+            return bad(400, 'Upload not found in storage — the SAS URL may have expired before the upload completed');
+        }
+
+        const maxBytes = getMaxBytes();
+        const rejectAndDelete = async (status: number, error: string, reason: string) => {
+            await deleteBlob(body.blobPath);
+            ctx.log.warn(`Rejected upload ${body.docId} (${reason}); blob deleted`);
+            return bad(status, error);
+        };
+
+        if (!blob.sizeBytes || blob.sizeBytes <= 0) {
+            return rejectAndDelete(400, 'The uploaded file is empty', 'empty');
+        }
+        if (blob.sizeBytes > maxBytes) {
+            return rejectAndDelete(413, `File is too large. The limit is ${Math.floor(maxBytes / (1024 * 1024))} MB`, 'too_large');
+        }
+
+        const ext = getExtension(cleanFilename(body.filename));
+        const head = await readBlobHead(body.blobPath, 16);
+        if (!headMatchesExtension(head, ext)) {
+            return rejectAndDelete(400, `The file contents do not match a .${ext} file`, 'content_mismatch');
+        }
+
+        const actualHash = await computeBlobSha256(body.blobPath);
+        if (actualHash.toLowerCase() !== body.sha256Hash.toLowerCase()) {
+            return rejectAndDelete(400, 'The uploaded file does not match its checksum. Please upload it again', 'hash_mismatch');
+        }
 
         // Duplicate check: same client, same tax year, same file content
         const existing = await executeQuery<DocumentRecord>(
@@ -160,14 +230,14 @@ const httpTrigger: AzureFunction = async function (
                 clientUuid: body.clientUuid,
                 taxYear,
                 blobPath: body.blobPath,
-                filename: body.filename,
+                filename: cleanFilename(body.filename),
                 fileSize: blob.sizeBytes || 0,
                 sha256Hash: body.sha256Hash,
                 uploadedBy: staffIdentity,
             }
         );
 
-        ctx.log(`Document ${body.docId} saved for client ${body.clientUuid} (uploaded by ${staffIdentity})`);
+        ctx.log(`Document ${body.docId} saved for client ${body.clientUuid}`);
 
         ctx.res = {
             status: 201,
@@ -184,10 +254,10 @@ const httpTrigger: AzureFunction = async function (
         const clientUuid = request.query?.clientUuid;
         const taxYear = request.query?.taxYear;
 
-        if (!clientUuid) {
+        if (!clientUuid || !isUuid(clientUuid)) {
             ctx.res = {
                 status: 400,
-                body: { error: 'clientUuid query parameter is required' },
+                body: { error: 'A valid clientUuid query parameter is required' },
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             };
             return;
@@ -204,6 +274,14 @@ const httpTrigger: AzureFunction = async function (
         if (taxYear) {
             query += ` AND tax_year = @taxYear`;
             params.taxYear = parseInt(taxYear, 10);
+            if (!Number.isInteger(params.taxYear)) {
+                ctx.res = {
+                    status: 400,
+                    body: { error: 'taxYear must be a whole number' },
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                };
+                return;
+            }
         }
 
         query += ` ORDER BY uploaded_at DESC`;
@@ -223,6 +301,14 @@ const httpTrigger: AzureFunction = async function (
      * GET /api/documents/:docId — single document record.
      */
     async function getDocument(ctx: Context, id: string): Promise<void> {
+        if (!isUuid(id)) {
+            ctx.res = {
+                status: 400,
+                body: { error: 'docId must be a valid id' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            };
+            return;
+        }
         const result = await executeQuery<DocumentRecord>(
             `SELECT doc_id, client_uuid, tax_year, blob_path, filename,
                     file_size, sha256_hash, uploaded_by, uploaded_at

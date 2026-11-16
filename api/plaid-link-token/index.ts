@@ -19,6 +19,8 @@ import { executeQuery } from '../shared/database';
 import { createLinkToken, createPlaidUser } from '../shared/plaid-client';
 import { decrypt } from '../shared/encryption';
 import { requireAuth } from '../shared/auth';
+import { logError } from '../shared/safe-log';
+import { allowOriginHeader, serverError } from '../shared/http';
 
 /**
  * Client record from database
@@ -48,7 +50,7 @@ const httpTrigger: AzureFunction = async function (
     req: HttpRequest
 ): Promise<void> {
     const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
+        ...allowOriginHeader(),
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     };
@@ -105,7 +107,7 @@ const httpTrigger: AzureFunction = async function (
         }
 
         const client = clientResult.recordset[0];
-        context.log(`Found client: ${client.first_name} ${client.last_name}`);
+        context.log(`Found client ${clientId}`);
 
         // Determine if this is update mode
         const isUpdateMode = !!itemId;
@@ -152,9 +154,7 @@ const httpTrigger: AzureFunction = async function (
             
             // Hosted Link completion redirect
             const completionRedirectUri = `${baseUrl}/bank/link-complete`;
-            
-            context.log(`Using redirect_uri (OAuth): ${redirectUri}`);
-            context.log(`Using completion_redirect_uri: ${completionRedirectUri}`);
+        context.log('Using redirect_uri (OAuth)');
 
             // Create UPDATE MODE link token (single-item, no multi-item)
             const linkResponse = await createLinkToken({
@@ -168,7 +168,7 @@ const httpTrigger: AzureFunction = async function (
                 // NOTE: No plaidUserId for update mode - single item only
             });
 
-            context.log(`Link token created (update mode): ${linkResponse.link_token}`);
+            context.log(`Link token created (update mode)`);
 
             // Save link token to database
             await executeQuery(
@@ -217,7 +217,7 @@ const httpTrigger: AzureFunction = async function (
                 const userResponse = await createPlaidUser(String(client.client_id));
                 plaidUserId = userResponse.user_id;
                 
-                context.log(`Created Plaid user_id: ${plaidUserId} for client ${clientId}`);
+                context.log(`Created Plaid user for client ${clientId}`);
                 
                 // Save the plaid_user_id to the clients table
                 await executeQuery(
@@ -228,12 +228,12 @@ const httpTrigger: AzureFunction = async function (
                 context.log(`Saved plaid_user_id to clients table`);
             } catch (userError) {
                 // Log the error but continue - we can still create a single-item link
-                context.log.error('Error creating Plaid user:', userError);
+                logError(context, 'Error creating Plaid user', userError);
                 context.log.warn('Proceeding without multi-item link due to user creation error');
                 plaidUserId = null;
             }
         } else {
-            context.log(`Client ${clientId} already has plaid_user_id: ${plaidUserId}`);
+            context.log(`Client ${clientId} already has a Plaid user`);
         }
 
         // Step 2: Create link token with multi-item enabled (if we have plaidUserId)
@@ -255,9 +255,7 @@ const httpTrigger: AzureFunction = async function (
         
         // Hosted Link completion redirect (where user goes after entire flow)
         const completionRedirectUri = `${baseUrl}/bank/link-complete`;
-        
-        context.log(`Using redirect_uri (OAuth): ${redirectUri}`);
-        context.log(`Using completion_redirect_uri: ${completionRedirectUri}`);
+        context.log('Using redirect_uri (OAuth)');
         
         const linkResponse = await createLinkToken({
             clientUserId: String(client.client_id),
@@ -270,7 +268,7 @@ const httpTrigger: AzureFunction = async function (
             accountSelectionEnabled: true,
         });
 
-        context.log(`Link token created (new link): ${linkResponse.link_token}`);
+        context.log(`Link token created (new link)`);
         context.log(`Multi-item enabled: ${!!plaidUserId}`);
 
         // Save link token to database
@@ -304,33 +302,7 @@ const httpTrigger: AzureFunction = async function (
         };
 
     } catch (error) {
-        context.log.error('Error creating link token:', error);
-        
-        // Extract Plaid error details if available
-        let errorMessage = 'Unknown error';
-        let plaidError = null;
-        
-        if (error instanceof Error) {
-            errorMessage = error.message;
-            
-            // Plaid errors have additional details in response.data
-            const plaidErr = error as any;
-            if (plaidErr.response?.data) {
-                plaidError = plaidErr.response.data;
-                context.log.error('Plaid API error details:', JSON.stringify(plaidError));
-                errorMessage = plaidError.error_message || plaidError.message || errorMessage;
-            }
-        }
-        
-        context.res = {
-            status: 500,
-            body: { 
-                error: 'Failed to create link token',
-                message: errorMessage,
-                plaidError: plaidError,
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Error creating link token', error, corsHeaders, 'Failed to create link token');
     }
 };
 

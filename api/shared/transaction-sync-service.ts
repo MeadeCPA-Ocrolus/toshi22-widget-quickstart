@@ -21,6 +21,7 @@ import { Transaction, RemovedTransaction, TransactionsSyncResponse } from 'plaid
 import { executeQuery } from './database';
 import { decrypt } from './encryption';
 import { syncTransactions } from './plaid-client';
+import { redact } from './safe-log';
 
 // ============================================================================
 // Types
@@ -231,7 +232,7 @@ export async function syncTransactionsForItem(
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Transaction sync failed for item ${itemId}: ${errorMessage}`);
+        context.log.error(`Transaction sync failed for item ${itemId}: ${redact(errorMessage)}`);
 
         return {
             success: false,

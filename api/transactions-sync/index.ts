@@ -19,12 +19,13 @@ import {
     TransactionSyncResult 
 } from '../shared/transaction-sync-service';
 import { requireAuth } from '../shared/auth';
+import { serverError, allowOriginHeader } from '../shared/http';
 
 /**
  * CORS headers for all responses
  */
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    ...allowOriginHeader(),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -59,16 +60,7 @@ const httpTrigger: AzureFunction = async function (
         }
 
     } catch (err) {
-        context.log.error('Transactions sync handler error:', err);
-        
-        context.res = {
-            status: 500,
-            body: { 
-                error: 'Internal server error',
-                message: err instanceof Error ? err.message : 'Unknown error',
-            },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        serverError(context, 'Transactions sync handler error', err, corsHeaders);
     }
 };
 

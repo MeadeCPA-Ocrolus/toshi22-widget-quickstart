@@ -23,6 +23,7 @@ import {
     InvestmentsTransactionsGetResponse 
 } from 'plaid';
 import { executeQuery } from './database';
+import { logError } from './safe-log';
 
 // ============================================================================
 // Types
@@ -103,7 +104,7 @@ export async function syncInvestmentsForItem(
         context.log(`Investments sync complete for item ${itemId}: ${result.holdings.added} holdings added, ${result.transactions.added} transactions added`);
 
     } catch (err: any) {
-        context.log.error(`Investments sync failed for item ${itemId}:`, err);
+        logError(context, `Investments sync failed for item ${itemId}`, err);
         
         const plaidErrorCode = err.response?.data?.error_code;
         
@@ -174,7 +175,7 @@ export async function syncHoldingsOnly(
     } catch (err: any) {
         const plaidErrorCode = err.response?.data?.error_code;
         result.error = plaidErrorCode || err.message || 'Unknown error';
-        context.log.error(`Holdings sync failed for item ${itemId}:`, err);
+        logError(context, `Holdings sync failed for item ${itemId}`, err);
     }
 
     return result;
