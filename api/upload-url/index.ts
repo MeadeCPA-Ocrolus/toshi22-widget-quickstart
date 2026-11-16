@@ -16,7 +16,6 @@ import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '../shared/auth';
 import { buildBlobPath, generateUploadSasUrl } from '../shared/storage';
-import { getDefaultTaxYear } from '../shared/tax-year';
 import { executeQuery } from '../shared/database';
 import { isUuid, validateFilenameAndYear, getMaxBytes } from '../shared/upload-validation';
 import { allowOriginHeader } from '../shared/http';
@@ -31,7 +30,8 @@ const corsHeaders = {
 interface UploadUrlRequest {
     clientUuid: string;
     filename: string;
-    taxYear?: number;
+    /** Required. Chosen by staff on screen. */
+    taxYear: number;
     /** Optional. Size in bytes the browser intends to upload, checked against the limit up front. */
     fileSize?: number;
 }
@@ -105,7 +105,7 @@ const httpTrigger: AzureFunction = async function (
             return;
         }
 
-        const taxYear = body.taxYear || getDefaultTaxYear();
+        const taxYear = body.taxYear; // already validated as a whole year above
         const docId = randomUUID();
         const blobPath = buildBlobPath(body.clientUuid, taxYear, docId, body.filename);
 

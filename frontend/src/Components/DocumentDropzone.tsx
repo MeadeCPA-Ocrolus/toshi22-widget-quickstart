@@ -11,6 +11,7 @@ import {
     CircularProgress,
     Alert,
     TextField,
+    MenuItem,
 } from '@mui/material';
 import {
     CloudUpload,
@@ -25,8 +26,6 @@ import { uploadDocuments } from '../services/documents-api';
 interface DocumentDropzoneProps {
     /** The client's UUID — never pass the internal client_id here */
     clientUuid: string;
-    /** Optional tax year override; defaults server-side if omitted */
-    taxYear?: number;
     /** Called after each upload batch completes, so the parent can refresh its document list */
     onUploadComplete?: () => void;
 }
@@ -37,7 +36,16 @@ interface FileStatus {
     error?: string;
 }
 
-const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, taxYear, onUploadComplete }) => {
+/** How many tax years the dropdown offers, counting back from this year. */
+const TAX_YEAR_CHOICES = 11;
+
+const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploadComplete }) => {
+    // Nothing is preselected on purpose: staff must choose the year for these
+    // documents. The app never guesses it from today's date.
+    const [taxYear, setTaxYear] = useState<number | ''>('');
+    const thisYear = new Date().getFullYear();
+    const taxYearOptions = Array.from({ length: TAX_YEAR_CHOICES }, (_, i) => thisYear - i);
+    const yearChosen = taxYear !== '';
     const [isDragging, setIsDragging] = useState(false);
     const [files, setFiles] = useState<FileStatus[]>([]);
     const [isUploading, setIsUploading] = useState(false);
@@ -45,8 +53,8 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, taxYear
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
-        setIsDragging(true);
-    }, []);
+        setIsDragging(yearChosen);
+    }, [yearChosen]);
 
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -55,7 +63,7 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, taxYear
 
     const startUpload = useCallback(
         async (incoming: File[]) => {
-            if (incoming.length === 0) return;
+            if (incoming.length === 0 || taxYear === '') return;
 
             const pending: FileStatus[] = incoming.map((file) => ({ file, status: 'pending' }));
             setFiles((prev) => [...prev, ...pending]);
@@ -91,10 +99,11 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, taxYear
         (e: React.DragEvent) => {
             e.preventDefault();
             setIsDragging(false);
+            if (!yearChosen) return;
             const dropped = Array.from(e.dataTransfer.files);
             startUpload(dropped);
         },
-        [startUpload]
+        [startUpload, yearChosen]
     );
 
     const handleFileInputChange = useCallback(
@@ -112,16 +121,34 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, taxYear
 
     return (
         <Box>
+            <TextField
+                select
+                size="small"
+                label="Tax year"
+                value={taxYear}
+                onChange={(e) => setTaxYear(e.target.value === '' ? '' : Number(e.target.value))}
+                helperText={yearChosen ? 'These files will be filed under this tax year' : 'Choose the tax year before adding files'}
+                sx={{ mb: 2, minWidth: 220 }}
+            >
+                {taxYearOptions.map((year) => (
+                    <MenuItem key={year} value={year}>
+                        {year}
+                    </MenuItem>
+                ))}
+            </TextField>
+
             <Paper
                 variant="outlined"
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => yearChosen && fileInputRef.current?.click()}
+                aria-disabled={!yearChosen}
                 sx={{
                     p: 4,
                     textAlign: 'center',
-                    cursor: 'pointer',
+                    cursor: yearChosen ? 'pointer' : 'not-allowed',
+                    opacity: yearChosen ? 1 : 0.55,
                     borderStyle: 'dashed',
                     borderWidth: 2,
                     borderColor: isDragging ? 'primary.main' : 'divider',
@@ -138,7 +165,7 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, taxYear
                 />
                 <CloudUpload sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
                 <Typography variant="body1" color="text.secondary">
-                    Drag and drop files here, or click to browse
+                    {yearChosen ? 'Drag and drop files here, or click to browse' : 'Choose a tax year above to enable uploads'}
                 </Typography>
             </Paper>
 

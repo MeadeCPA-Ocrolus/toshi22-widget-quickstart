@@ -28,7 +28,17 @@ describe('validateFilenameAndYear', () => {
     const now = new Date('2026-11-16');
     it('allows normal documents', () => {
         expect(validateFilenameAndYear('2025 W-2.PDF', 2025, now).ok).toBe(true);
-        expect(validateFilenameAndYear('statement.xlsx', undefined, now).ok).toBe(true);
+        expect(validateFilenameAndYear('statement.xlsx', 2024, now).ok).toBe(true);
+    });
+    it('requires a tax year and never guesses one', () => {
+        const missing = validateFilenameAndYear('statement.xlsx', undefined, now);
+        expect(missing.ok).toBe(false);
+        expect(missing.error).toMatch(/taxYear is required/);
+        expect(validateFilenameAndYear('statement.xlsx', null, now).ok).toBe(false);
+    });
+    it('accepts the first and last allowed years', () => {
+        expect(validateFilenameAndYear('a.pdf', 2000, now).ok).toBe(true);
+        expect(validateFilenameAndYear('a.pdf', 2027, now).ok).toBe(true);
     });
     it('rejects executables, double extensions that end badly, and no extension', () => {
         expect(validateFilenameAndYear('setup.exe', 2025, now).ok).toBe(false);
@@ -42,6 +52,7 @@ describe('validateFilenameAndYear', () => {
         expect(validateFilenameAndYear('a.pdf', 2028, now).ok).toBe(false);
         expect(validateFilenameAndYear('a.pdf', '2025', now).ok).toBe(false);
         expect(validateFilenameAndYear('a.pdf', 2025.5, now).ok).toBe(false);
+        expect(validateFilenameAndYear('a.pdf', 0, now).ok).toBe(false);
     });
     it('rejects missing filenames', () => {
         expect(validateFilenameAndYear('', 2025, now).ok).toBe(false);

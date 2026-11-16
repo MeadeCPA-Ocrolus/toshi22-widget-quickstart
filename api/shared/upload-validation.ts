@@ -71,7 +71,7 @@ export interface ValidationResult {
     error?: string;
 }
 
-/** Validates the file name and tax year sent to /api/upload-url or /api/documents. */
+/** Validates the file name and the (required) tax year sent to /api/upload-url or /api/documents. */
 export function validateFilenameAndYear(filename: unknown, taxYear: unknown, now: Date = new Date()): ValidationResult {
     if (typeof filename !== 'string' || filename.trim().length === 0) {
         return { ok: false, error: 'filename is required' };
@@ -85,11 +85,13 @@ export function validateFilenameAndYear(filename: unknown, taxYear: unknown, now
     if (!ext || !allowed.includes(ext)) {
         return { ok: false, error: `File type not allowed. Allowed types: ${allowed.join(', ')}` };
     }
-    if (taxYear !== undefined && taxYear !== null) {
-        const maxYear = now.getFullYear() + 1;
-        if (typeof taxYear !== 'number' || !Number.isInteger(taxYear) || taxYear < 2000 || taxYear > maxYear) {
-            return { ok: false, error: `taxYear must be a whole year between 2000 and ${maxYear}` };
-        }
+    // A tax year is required. Staff choose it on screen; the API never guesses one.
+    if (taxYear === undefined || taxYear === null) {
+        return { ok: false, error: 'taxYear is required. Choose the tax year for this document' };
+    }
+    const maxYear = now.getFullYear() + 1;
+    if (typeof taxYear !== 'number' || !Number.isInteger(taxYear) || taxYear < 2000 || taxYear > maxYear) {
+        return { ok: false, error: `taxYear must be a whole year between 2000 and ${maxYear}` };
     }
     return { ok: true };
 }
