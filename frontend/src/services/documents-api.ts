@@ -59,6 +59,8 @@ export interface UploadResult {
     /** For a duplicate: the name and upload time of the file that is already saved */
     existingFilename?: string;
     existingUploadedAt?: string;
+    /** The same file is already filed under a different tax year (it was still saved) */
+    sameFileInOtherYear?: { taxYear: number; filename: string; uploadedAt: string };
 }
 
 export interface UploadFailure {
@@ -153,6 +155,7 @@ export async function uploadDocument(
         duplicate: !!result.duplicate,
         existingFilename: result.duplicate ? result.existingDoc?.filename : undefined,
         existingUploadedAt: result.duplicate ? result.existingDoc?.uploaded_at : undefined,
+        sameFileInOtherYear: result.sameFileInOtherYear,
     };
 }
 
