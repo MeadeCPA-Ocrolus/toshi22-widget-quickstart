@@ -56,7 +56,7 @@ describe('DocumentDropzone', () => {
         chooseYear();
         await act(async () => { drop(['big.pdf', 'again.pdf', 'boom.pdf', 'fine.pdf']); });
 
-        expect(getByRole('alert')).toHaveTextContent('2 failed, 1 already uploaded');
+        expect(getByRole('alert')).toHaveTextContent('1 uploaded, 2 failed, 1 duplicate');
         expect(getByText(/File is too large\. The limit is 50 MB/)).toBeInTheDocument();
         expect(getByText(/Already uploaded as first\.pdf on /)).toBeInTheDocument();
         expect(getByText('Reference: 4f2a9c1e')).toBeInTheDocument();
@@ -65,23 +65,37 @@ describe('DocumentDropzone', () => {
         expect(onUploadComplete).toHaveBeenCalledTimes(1);
     });
 
-    it('clears saved lines after 10 seconds but keeps failures and duplicates', async () => {
+    it('keeps saved lines while a failure is on screen, and clears them 10 seconds after the last problem goes', async () => {
         mockUpload.mockImplementation(async (_c: string, _f: File[], _y: number, done: Function) => {
             done(0, { filename: 'bad.exe', error: 'File type not allowed. Allowed types: pdf' });
             done(1, { filename: 'fine.pdf', docId: 'd2', duplicate: false });
             return [];
         });
-        const { chooseYear, drop, getByText, queryByText } = setup();
+        const { chooseYear, drop, getByText, queryByText, getByLabelText, getByRole } = setup();
         chooseYear();
         await act(async () => { drop(['bad.exe', 'fine.pdf']); });
-        expect(getByText('fine.pdf')).toBeInTheDocument();
-
-        act(() => { jest.advanceTimersByTime(10000); });
-        expect(queryByText('fine.pdf')).toBeNull();
-        expect(getByText('bad.exe')).toBeInTheDocument();
+        expect(getByRole('alert')).toHaveTextContent('1 uploaded, 1 failed');
 
         act(() => { jest.advanceTimersByTime(10 * 60 * 1000); });
+        expect(getByText('fine.pdf')).toBeInTheDocument();
         expect(getByText('bad.exe')).toBeInTheDocument();
+
+        fireEvent.click(getByLabelText('Dismiss bad.exe'));
+        expect(getByText('fine.pdf')).toBeInTheDocument();
+        act(() => { jest.advanceTimersByTime(10000); });
+        expect(queryByText('fine.pdf')).toBeNull();
+    });
+
+    it('tells staff when a saved file is already filed under another year', async () => {
+        mockUpload.mockImplementation(async (_c: string, _f: File[], _y: number, done: Function) => {
+            done(0, { filename: 'w2.pdf', docId: 'd1', duplicate: false, sameFileInOtherYear: { taxYear: 2022, filename: 'w2-old.pdf', uploadedAt: '2026-01-01T00:00:00Z' } });
+            return [];
+        });
+        const { chooseYear, drop, getByText } = setup();
+        chooseYear();
+        await act(async () => { drop(['w2.pdf']); });
+        expect(getByText(/^Uploaded · /)).toBeInTheDocument();
+        expect(getByText('Same file is also filed under 2022 as w2-old.pdf')).toBeInTheDocument();
     });
 
     it('shows a green banner when everything is saved, then it goes away', async () => {
@@ -93,9 +107,9 @@ describe('DocumentDropzone', () => {
         const { chooseYear, drop, getByText, queryByText } = setup();
         chooseYear();
         await act(async () => { drop(['a.pdf', 'b.pdf']); });
-        expect(getByText('2 files uploaded')).toBeInTheDocument();
+        expect(getByText('2 uploaded')).toBeInTheDocument();
         act(() => { jest.advanceTimersByTime(10000); });
-        expect(queryByText('2 files uploaded')).toBeNull();
+        expect(queryByText('2 uploaded')).toBeNull();
     });
 
     it('dismisses a line, updates the banner, and "Clear all" removes the rest', async () => {
@@ -107,10 +121,10 @@ describe('DocumentDropzone', () => {
         const { chooseYear, drop, getByRole, getByLabelText, getByText, queryByRole } = setup();
         chooseYear();
         await act(async () => { drop(['one.exe', 'two.exe']); });
-        expect(getByRole('alert')).toHaveTextContent('2 files failed');
+        expect(getByRole('alert')).toHaveTextContent('2 failed');
 
         fireEvent.click(getByLabelText('Dismiss one.exe'));
-        expect(getByRole('alert')).toHaveTextContent('1 file failed');
+        expect(getByRole('alert')).toHaveTextContent('1 failed');
 
         fireEvent.click(getByText('Clear all'));
         expect(queryByRole('alert')).toBeNull();
