@@ -862,6 +862,18 @@ export const ClientDetail: React.FC = () => {
         }
     }, [clientId]);
 
+    // After an upload, reload only the Documents list. Reloading the whole page would
+    // swap it for a spinner, which removes the drop zone and wipes its error lines.
+    const refreshDocuments = useCallback(async () => {
+        const uuid = client?.client_uuid;
+        if (!uuid) return;
+        try {
+            setDocuments(await getDocuments(uuid));
+        } catch {
+            // Keep the list that is already on screen
+        }
+    }, [client?.client_uuid]);
+
     useEffect(() => {
         fetchClientData();
     }, [fetchClientData]);
@@ -1240,7 +1252,7 @@ export const ClientDetail: React.FC = () => {
                         <>
                             <DocumentDropzone
                                 clientUuid={client.client_uuid}
-                                onUploadComplete={fetchClientData}
+                                onUploadComplete={refreshDocuments}
                             />
 
                             {documents.length > 0 && (
