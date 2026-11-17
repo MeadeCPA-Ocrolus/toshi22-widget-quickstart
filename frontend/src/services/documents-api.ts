@@ -50,6 +50,8 @@ export interface DocumentRecord {
     sha256_hash: string;
     uploaded_by: string;
     uploaded_at: string;
+    /** Other tax years in which this client has the same file (same checksum), oldest first */
+    also_in_years?: number[];
 }
 
 export interface UploadResult {
