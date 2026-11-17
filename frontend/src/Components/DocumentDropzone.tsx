@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     Box,
     Typography,
@@ -10,6 +10,7 @@ import {
     IconButton,
     CircularProgress,
     Alert,
+    Button,
     TextField,
     MenuItem,
 } from '@mui/material';
@@ -21,7 +22,8 @@ import {
     Close,
     ContentCopy,
 } from '@mui/icons-material';
-import { uploadDocuments } from '../services/documents-api';
+import { uploadDocuments, UploadResult, UploadFailure } from '../services/documents-api';
+import { shortReference, summarizeProblems, summarizeSuccess } from '../services/upload-messages';
 
 interface DocumentDropzoneProps {
     /** The client's UUID — never pass the internal client_id here */
@@ -30,14 +32,40 @@ interface DocumentDropzoneProps {
     onUploadComplete?: () => void;
 }
 
-interface FileStatus {
-    file: File;
-    status: 'pending' | 'uploading' | 'done' | 'duplicate' | 'error';
-    error?: string;
+type LineStatus = 'pending' | 'done' | 'duplicate' | 'error';
+
+interface FileLine {
+    id: number;
+    name: string;
+    status: LineStatus;
+    /** Reason for a failure, or the "already uploaded as ..." text for a duplicate */
+    message?: string;
+    /** First 8 characters of the reference id the API sends with server errors */
+    reference?: string;
+    at: Date;
 }
 
 /** How many tax years the dropdown offers, counting back from this year. */
 const TAX_YEAR_CHOICES = 11;
+/** Saved files clear from the list after this long (the Documents list shows them). */
+const SUCCESS_LINE_MS = 10000;
+/** The list scrolls after about six lines. */
+const LIST_MAX_HEIGHT = 336;
+
+const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+function applyResult(line: FileLine, result: UploadResult | UploadFailure): FileLine {
+    const at = new Date();
+    if ('error' in result) {
+        return { ...line, status: 'error', message: result.error, reference: shortReference(result.correlationId), at };
+    }
+    if (result.duplicate) {
+        const when = result.existingUploadedAt ? ` on ${new Date(result.existingUploadedAt).toLocaleDateString()}` : '';
+        const name = result.existingFilename || 'an earlier upload';
+        return { ...line, status: 'duplicate', message: `Already uploaded as ${name}${when}`, at };
+    }
+    return { ...line, status: 'done', at };
+}
 
 const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploadComplete }) => {
     // Nothing is preselected on purpose: staff must choose the year for these
@@ -46,53 +74,87 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
     const thisYear = new Date().getFullYear();
     const taxYearOptions = Array.from({ length: TAX_YEAR_CHOICES }, (_, i) => thisYear - i);
     const yearChosen = taxYear !== '';
-    const [isDragging, setIsDragging] = useState(false);
-    const [files, setFiles] = useState<FileStatus[]>([]);
-    const [isUploading, setIsUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(yearChosen);
-    }, [yearChosen]);
+    const [isDragging, setIsDragging] = useState(false);
+    const [lines, setLines] = useState<FileLine[]>([]);
+    // Files started and files finished across all drops still in progress ("Uploading 2 of 5")
+    const [progress, setProgress] = useState({ total: 0, completed: 0 });
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const nextId = useRef(1);
+    const timers = useRef<number[]>([]);
+
+    const working = progress.total > 0;
+
+    // Clear any pending "remove this line" timers when the component goes away
+    useEffect(() => {
+        const pending = timers.current;
+        return () => pending.forEach((t) => window.clearTimeout(t));
+    }, []);
+
+    // Ask the browser to confirm before closing or reloading the tab mid-upload
+    useEffect(() => {
+        if (!working) return;
+        const warn = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [working]);
+
+    const handleDragOver = useCallback(
+        (e: React.DragEvent) => {
+            e.preventDefault();
+            setIsDragging(yearChosen);
+        },
+        [yearChosen]
+    );
 
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
     }, []);
 
+    const removeLine = useCallback((id: number) => {
+        setLines((prev) => prev.filter((l) => l.id !== id));
+    }, []);
+
+    const clearProblems = () => {
+        setLines((prev) => prev.filter((l) => l.status !== 'error' && l.status !== 'duplicate'));
+    };
+
     const startUpload = useCallback(
         async (incoming: File[]) => {
             if (incoming.length === 0 || taxYear === '') return;
 
-            const pending: FileStatus[] = incoming.map((file) => ({ file, status: 'pending' }));
-            setFiles((prev) => [...prev, ...pending]);
-            setIsUploading(true);
+            const newLines: FileLine[] = incoming.map((file) => ({
+                id: nextId.current++,
+                name: file.name,
+                status: 'pending',
+                at: new Date(),
+            }));
+            setLines((prev) => [...prev, ...newLines]);
+            setProgress((p) => ({ total: p.total + incoming.length, completed: p.completed }));
 
-            const results = await uploadDocuments(clientUuid, incoming, taxYear);
+            await uploadDocuments(clientUuid, incoming, taxYear, (index, result) => {
+                const id = newLines[index].id;
+                setLines((prev) => prev.map((l) => (l.id === id ? applyResult(l, result) : l)));
 
-            setFiles((prev) => {
-                const updated = [...prev];
-                results.forEach((result, i) => {
-                    const targetFile = incoming[i];
-                    const idx = updated.findIndex((f) => f.file === targetFile);
-                    if (idx === -1) return;
+                // Saved files show up in the Documents list, so their line clears itself.
+                // Failures and duplicates stay until staff dismiss them.
+                if (!('error' in result) && !result.duplicate) {
+                    timers.current.push(window.setTimeout(() => removeLine(id), SUCCESS_LINE_MS));
+                }
 
-                    if ('error' in result) {
-                        updated[idx] = { ...updated[idx], status: 'error', error: result.error };
-                    } else if (result.duplicate) {
-                        updated[idx] = { ...updated[idx], status: 'duplicate' };
-                    } else {
-                        updated[idx] = { ...updated[idx], status: 'done' };
-                    }
+                setProgress((p) => {
+                    const completed = p.completed + 1;
+                    return completed >= p.total ? { total: 0, completed: 0 } : { total: p.total, completed };
                 });
-                return updated;
             });
 
-            setIsUploading(false);
             onUploadComplete?.();
         },
-        [clientUuid, taxYear, onUploadComplete]
+        [clientUuid, taxYear, onUploadComplete, removeLine]
     );
 
     const handleDrop = useCallback(
@@ -115,9 +177,10 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
         [startUpload]
     );
 
-    const removeFile = (file: File) => {
-        setFiles((prev) => prev.filter((f) => f.file !== file));
-    };
+    const failed = lines.filter((l) => l.status === 'error').length;
+    const duplicates = lines.filter((l) => l.status === 'duplicate').length;
+    const saved = lines.filter((l) => l.status === 'done').length;
+    const hasProblems = failed + duplicates > 0;
 
     return (
         <Box>
@@ -136,6 +199,33 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
                     </MenuItem>
                 ))}
             </TextField>
+
+            {working && (
+                <Alert severity="info" icon={<CircularProgress size={18} />} sx={{ mb: 1 }}>
+                    Uploading {Math.min(progress.completed + 1, progress.total)} of {progress.total}…
+                </Alert>
+            )}
+
+            {hasProblems && (
+                <Alert
+                    severity={failed > 0 ? 'error' : 'warning'}
+                    role="alert"
+                    sx={{ mb: 1 }}
+                    action={
+                        <Button color="inherit" size="small" onClick={clearProblems}>
+                            Clear all
+                        </Button>
+                    }
+                >
+                    {summarizeProblems(failed, duplicates)}
+                </Alert>
+            )}
+
+            {!working && !hasProblems && saved > 0 && (
+                <Alert severity="success" sx={{ mb: 1 }}>
+                    {summarizeSuccess(saved)}
+                </Alert>
+            )}
 
             <Paper
                 variant="outlined"
@@ -169,53 +259,59 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
                 </Typography>
             </Paper>
 
-            {files.length > 0 && (
-                <List dense sx={{ mt: 2 }}>
-                    {files.map((f, i) => (
+            {lines.length > 0 && (
+                <List dense sx={{ mt: 2, maxHeight: LIST_MAX_HEIGHT, overflowY: 'auto' }}>
+                    {lines.map((line) => (
                         <ListItem
-                            key={`${f.file.name}-${i}`}
+                            key={line.id}
                             secondaryAction={
-                                f.status !== 'uploading' && (
-                                    <IconButton edge="end" size="small" onClick={() => removeFile(f.file)}>
+                                line.status !== 'pending' && (
+                                    <IconButton
+                                        edge="end"
+                                        size="small"
+                                        aria-label={`Dismiss ${line.name}`}
+                                        onClick={() => removeLine(line.id)}
+                                    >
                                         <Close fontSize="small" />
                                     </IconButton>
                                 )
                             }
                         >
                             <ListItemIcon sx={{ minWidth: 36 }}>
-                                {f.status === 'pending' || f.status === 'uploading' ? (
+                                {line.status === 'pending' ? (
                                     <CircularProgress size={20} />
-                                ) : f.status === 'done' ? (
+                                ) : line.status === 'done' ? (
                                     <CheckCircle color="success" fontSize="small" />
-                                ) : f.status === 'duplicate' ? (
+                                ) : line.status === 'duplicate' ? (
                                     <ContentCopy color="warning" fontSize="small" />
-                                ) : f.status === 'error' ? (
+                                ) : line.status === 'error' ? (
                                     <ErrorIcon color="error" fontSize="small" />
                                 ) : (
                                     <InsertDriveFile fontSize="small" />
                                 )}
                             </ListItemIcon>
                             <ListItemText
-                                primary={f.file.name}
+                                primary={line.name}
                                 secondary={
-                                    f.status === 'duplicate'
-                                        ? 'Already uploaded for this client/year'
-                                        : f.status === 'error'
-                                        ? f.error
-                                        : f.status === 'done'
-                                        ? 'Uploaded'
-                                        : 'Uploading…'
+                                    line.status === 'pending' ? (
+                                        'Uploading…'
+                                    ) : line.status === 'done' ? (
+                                        `Uploaded · ${formatTime(line.at)}`
+                                    ) : (
+                                        <>
+                                            {line.message} · {formatTime(line.at)}
+                                            {line.reference && (
+                                                <Box component="span" sx={{ display: 'block' }}>
+                                                    Reference: {line.reference}
+                                                </Box>
+                                            )}
+                                        </>
+                                    )
                                 }
                             />
                         </ListItem>
                     ))}
                 </List>
-            )}
-
-            {isUploading && (
-                <Alert severity="info" sx={{ mt: 1 }}>
-                    Uploading — please don't close this page.
-                </Alert>
             )}
         </Box>
     );

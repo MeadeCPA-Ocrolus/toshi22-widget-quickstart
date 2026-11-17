@@ -18,8 +18,7 @@ import { requireAuth } from '../shared/auth';
 import { buildBlobPath, generateUploadSasUrl } from '../shared/storage';
 import { executeQuery } from '../shared/database';
 import { isUuid, validateFilenameAndYear, getMaxBytes } from '../shared/upload-validation';
-import { allowOriginHeader } from '../shared/http';
-import { redact } from '../shared/safe-log';
+import { allowOriginHeader, serverError } from '../shared/http';
 
 const corsHeaders = {
     ...allowOriginHeader(),
@@ -126,13 +125,8 @@ const httpTrigger: AzureFunction = async function (
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };
     } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Failed to generate upload URL: ${redact(errorMessage)}`);
-        context.res = {
-            status: 500,
-            body: { error: 'Failed to generate upload URL' },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        // Generic message plus a reference number; the real error goes to the logs only
+        serverError(context, 'upload-url failed', err, corsHeaders);
     }
 };
 

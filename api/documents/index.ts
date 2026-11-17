@@ -22,8 +22,7 @@ import {
     expectedBlobPrefix, headMatchesExtension, getMaxBytes,
 } from '../shared/upload-validation';
 import { executeQuery } from '../shared/database';
-import { allowOriginHeader } from '../shared/http';
-import { redact } from '../shared/safe-log';
+import { allowOriginHeader, serverError } from '../shared/http';
 
 const corsHeaders = {
     ...allowOriginHeader(),
@@ -88,13 +87,8 @@ const httpTrigger: AzureFunction = async function (
                 };
         }
     } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        context.log.error(`Documents endpoint error: ${redact(errorMessage)}`);
-        context.res = {
-            status: 500,
-            body: { error: 'Internal server error' },
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        };
+        // Generic message plus a reference number; the real error goes to the logs only
+        serverError(context, 'documents endpoint failed', err, corsHeaders);
     }
 
     /**
@@ -164,7 +158,7 @@ const httpTrigger: AzureFunction = async function (
         // ---- Storage checks: the browser uploaded directly, so inspect what actually arrived ----
         const blob = await verifyBlobExists(body.blobPath);
         if (!blob.exists) {
-            return bad(400, 'Upload not found in storage — the SAS URL may have expired before the upload completed');
+            return bad(400, 'The upload link may have expired. Please try again.');
         }
 
         const maxBytes = getMaxBytes();

@@ -3,7 +3,42 @@
  * @module services/documents-api
  */
 
+import { friendlyMessage, GENERIC_FAILURE, NETWORK_PROBLEM } from './upload-messages';
+
 const API_BASE_URL = '/api';
+
+/** An upload failure with a message that is safe to show on screen. */
+export class UploadError extends Error {
+    status?: number;
+    /** Reference id the API returns with server errors (the screen shows its first 8 characters) */
+    correlationId?: string;
+
+    constructor(message: string, opts: { status?: number; correlationId?: string } = {}) {
+        super(message);
+        this.name = 'UploadError';
+        this.status = opts.status;
+        this.correlationId = opts.correlationId;
+        Object.setPrototypeOf(this, UploadError.prototype);
+    }
+}
+
+/** Fetch that turns a network failure into a readable UploadError. */
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+    try {
+        return await fetch(url, init);
+    } catch {
+        throw new UploadError(NETWORK_PROBLEM);
+    }
+}
+
+/** Builds an UploadError from a failed API response, using plain-language wording. */
+async function errorFromResponse(response: Response): Promise<UploadError> {
+    const body = await response.json().catch(() => ({} as { error?: string; correlationId?: string }));
+    return new UploadError(friendlyMessage(response.status, body?.error), {
+        status: response.status,
+        correlationId: body?.correlationId,
+    });
+}
 
 export interface DocumentRecord {
     doc_id: string;
@@ -21,6 +56,17 @@ export interface UploadResult {
     docId: string;
     filename: string;
     duplicate: boolean;
+    /** For a duplicate: the name and upload time of the file that is already saved */
+    existingFilename?: string;
+    existingUploadedAt?: string;
+}
+
+export interface UploadFailure {
+    filename: string;
+    /** Plain-language reason, safe to show on screen */
+    error: string;
+    correlationId?: string;
+    status?: number;
 }
 
 /**
@@ -48,21 +94,20 @@ export async function uploadDocument(
     taxYear: number
 ): Promise<UploadResult> {
     // Step 1: get the SAS URL
-    const urlResponse = await fetch(`${API_BASE_URL}/upload-url`, {
+    const urlResponse = await safeFetch(`${API_BASE_URL}/upload-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientUuid, filename: file.name, taxYear, fileSize: file.size }),
     });
 
     if (!urlResponse.ok) {
-        const err = await urlResponse.json().catch(() => ({}));
-        throw new Error(err.error || `Failed to get upload URL (${urlResponse.status})`);
+        throw await errorFromResponse(urlResponse);
     }
 
     const { docId, blobPath, sasUrl, taxYear: resolvedTaxYear } = await urlResponse.json();
 
     // Step 2: upload directly to Blob Storage
-    const blobResponse = await fetch(sasUrl, {
+    const blobResponse = await safeFetch(sasUrl, {
         method: 'PUT',
         headers: {
             'x-ms-blob-type': 'BlockBlob',
@@ -72,13 +117,18 @@ export async function uploadDocument(
     });
 
     if (!blobResponse.ok) {
-        throw new Error(`Upload to storage failed (${blobResponse.status})`);
+        throw new UploadError(
+            blobResponse.status === 403
+                ? 'Upload to storage failed (403). The upload link may have expired. Try again.'
+                : `Upload to storage failed (${blobResponse.status}). Try again.`,
+            { status: blobResponse.status }
+        );
     }
 
     // Step 3: confirm with the API, including the file hash for duplicate detection
     const sha256Hash = await computeSha256(file);
 
-    const confirmResponse = await fetch(`${API_BASE_URL}/documents`, {
+    const confirmResponse = await safeFetch(`${API_BASE_URL}/documents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,8 +142,7 @@ export async function uploadDocument(
     });
 
     if (!confirmResponse.ok) {
-        const err = await confirmResponse.json().catch(() => ({}));
-        throw new Error(err.error || `Failed to save document record (${confirmResponse.status})`);
+        throw await errorFromResponse(confirmResponse);
     }
 
     const result = await confirmResponse.json();
@@ -102,30 +151,37 @@ export async function uploadDocument(
         docId: result.duplicate ? result.existingDoc.doc_id : docId,
         filename: file.name,
         duplicate: !!result.duplicate,
+        existingFilename: result.duplicate ? result.existingDoc?.filename : undefined,
+        existingUploadedAt: result.duplicate ? result.existingDoc?.uploaded_at : undefined,
     };
 }
 
 /**
- * Uploads multiple files sequentially, returning results (and any per-file
- * errors) so the UI can show a per-file status instead of failing the whole batch.
+ * Uploads multiple files one after another. A failure on one file never stops
+ * the rest. `onFileDone` is called as soon as each file finishes, so the screen
+ * can update its line and its "Uploading 2 of 5" count right away.
  */
 export async function uploadDocuments(
     clientUuid: string,
     files: File[],
-    taxYear: number
-): Promise<Array<UploadResult | { filename: string; error: string }>> {
-    const results: Array<UploadResult | { filename: string; error: string }> = [];
+    taxYear: number,
+    onFileDone?: (index: number, result: UploadResult | UploadFailure) => void
+): Promise<Array<UploadResult | UploadFailure>> {
+    const results: Array<UploadResult | UploadFailure> = [];
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        let result: UploadResult | UploadFailure;
         try {
-            const result = await uploadDocument(clientUuid, file, taxYear);
-            results.push(result);
+            result = await uploadDocument(clientUuid, file, taxYear);
         } catch (err) {
-            results.push({
-                filename: file.name,
-                error: err instanceof Error ? err.message : String(err),
-            });
+            result =
+                err instanceof UploadError
+                    ? { filename: file.name, error: err.message, correlationId: err.correlationId, status: err.status }
+                    : { filename: file.name, error: GENERIC_FAILURE };
         }
+        results.push(result);
+        onFileDone?.(i, result);
     }
 
     return results;
