@@ -23,7 +23,7 @@ import {
     ContentCopy,
 } from '@mui/icons-material';
 import { uploadDocuments, UploadResult, UploadFailure } from '../services/documents-api';
-import { shortReference, summarizeProblems, summarizeSuccess } from '../services/upload-messages';
+import { shortReference, summarizeOutcome } from '../services/upload-messages';
 
 interface DocumentDropzoneProps {
     /** The client's UUID — never pass the internal client_id here */
@@ -40,6 +40,8 @@ interface FileLine {
     status: LineStatus;
     /** Reason for a failure, or the "already uploaded as ..." text for a duplicate */
     message?: string;
+    /** A note under a saved file, e.g. the same file is also filed under another year */
+    note?: string;
     /** First 8 characters of the reference id the API sends with server errors */
     reference?: string;
     at: Date;
@@ -47,7 +49,7 @@ interface FileLine {
 
 /** How many tax years the dropdown offers, counting back from this year. */
 const TAX_YEAR_CHOICES = 11;
-/** Saved files clear from the list after this long (the Documents list shows them). */
+/** Saved lines clear this long after the last change, but only when no failure or duplicate is on screen. */
 const SUCCESS_LINE_MS = 10000;
 /** The list scrolls after about six lines. */
 const LIST_MAX_HEIGHT = 336;
@@ -64,7 +66,9 @@ function applyResult(line: FileLine, result: UploadResult | UploadFailure): File
         const name = result.existingFilename || 'an earlier upload';
         return { ...line, status: 'duplicate', message: `Already uploaded as ${name}${when}`, at };
     }
-    return { ...line, status: 'done', at };
+    const other = result.sameFileInOtherYear;
+    const note = other ? `Same file is also filed under ${other.taxYear} as ${other.filename}` : undefined;
+    return { ...line, status: 'done', note, at };
 }
 
 const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploadComplete }) => {
@@ -81,15 +85,8 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
     const [progress, setProgress] = useState({ total: 0, completed: 0 });
     const fileInputRef = useRef<HTMLInputElement>(null);
     const nextId = useRef(1);
-    const timers = useRef<number[]>([]);
 
     const working = progress.total > 0;
-
-    // Clear any pending "remove this line" timers when the component goes away
-    useEffect(() => {
-        const pending = timers.current;
-        return () => pending.forEach((t) => window.clearTimeout(t));
-    }, []);
 
     // Ask the browser to confirm before closing or reloading the tab mid-upload
     useEffect(() => {
@@ -119,8 +116,9 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
         setLines((prev) => prev.filter((l) => l.id !== id));
     }, []);
 
-    const clearProblems = () => {
-        setLines((prev) => prev.filter((l) => l.status !== 'error' && l.status !== 'duplicate'));
+    // "Clear all" removes every finished line (failures, duplicates and saved files)
+    const clearAll = () => {
+        setLines((prev) => prev.filter((l) => l.status === 'pending'));
     };
 
     const startUpload = useCallback(
@@ -140,12 +138,6 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
                 const id = newLines[index].id;
                 setLines((prev) => prev.map((l) => (l.id === id ? applyResult(l, result) : l)));
 
-                // Saved files show up in the Documents list, so their line clears itself.
-                // Failures and duplicates stay until staff dismiss them.
-                if (!('error' in result) && !result.duplicate) {
-                    timers.current.push(window.setTimeout(() => removeLine(id), SUCCESS_LINE_MS));
-                }
-
                 setProgress((p) => {
                     const completed = p.completed + 1;
                     return completed >= p.total ? { total: 0, completed: 0 } : { total: p.total, completed };
@@ -154,7 +146,7 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
 
             onUploadComplete?.();
         },
-        [clientUuid, taxYear, onUploadComplete, removeLine]
+        [clientUuid, taxYear, onUploadComplete]
     );
 
     const handleDrop = useCallback(
@@ -181,6 +173,16 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
     const duplicates = lines.filter((l) => l.status === 'duplicate').length;
     const saved = lines.filter((l) => l.status === 'done').length;
     const hasProblems = failed + duplicates > 0;
+
+    // Saved lines stay while any failure or duplicate is on screen, so staff can see
+    // which files went through. Once nothing needs attention, they clear after 10 seconds.
+    useEffect(() => {
+        if (working || hasProblems || saved === 0) return;
+        const t = window.setTimeout(() => {
+            setLines((prev) => prev.filter((l) => l.status !== 'done'));
+        }, SUCCESS_LINE_MS);
+        return () => window.clearTimeout(t);
+    }, [working, hasProblems, saved]);
 
     return (
         <Box>
@@ -212,18 +214,18 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
                     role="alert"
                     sx={{ mb: 1 }}
                     action={
-                        <Button color="inherit" size="small" onClick={clearProblems}>
+                        <Button color="inherit" size="small" onClick={clearAll}>
                             Clear all
                         </Button>
                     }
                 >
-                    {summarizeProblems(failed, duplicates)}
+                    {summarizeOutcome(saved, failed, duplicates)}
                 </Alert>
             )}
 
             {!working && !hasProblems && saved > 0 && (
                 <Alert severity="success" sx={{ mb: 1 }}>
-                    {summarizeSuccess(saved)}
+                    {summarizeOutcome(saved, 0, 0)}
                 </Alert>
             )}
 
@@ -296,7 +298,14 @@ const DocumentDropzone: React.FC<DocumentDropzoneProps> = ({ clientUuid, onUploa
                                     line.status === 'pending' ? (
                                         'Uploading…'
                                     ) : line.status === 'done' ? (
-                                        `Uploaded · ${formatTime(line.at)}`
+                                        <>
+                                            Uploaded · {formatTime(line.at)}
+                                            {line.note && (
+                                                <Box component="span" sx={{ display: 'block', color: 'warning.dark' }}>
+                                                    {line.note}
+                                                </Box>
+                                            )}
+                                        </>
                                     ) : (
                                         <>
                                             {line.message} · {formatTime(line.at)}

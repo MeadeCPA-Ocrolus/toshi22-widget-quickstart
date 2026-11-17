@@ -207,6 +207,21 @@ const httpTrigger: AzureFunction = async function (
             return;
         }
 
+        // Same file already filed under a different tax year: still saved, but staff are told
+        const otherYear = await executeQuery<DocumentRecord>(
+            `SELECT TOP 1 tax_year, filename, uploaded_at FROM documents
+             WHERE client_uuid = @clientUuid AND tax_year <> @taxYear AND sha256_hash = @sha256Hash
+             ORDER BY uploaded_at DESC`,
+            { clientUuid: body.clientUuid, taxYear, sha256Hash: body.sha256Hash }
+        );
+        const sameFileInOtherYear = otherYear.recordset[0]
+            ? {
+                  taxYear: otherYear.recordset[0].tax_year,
+                  filename: otherYear.recordset[0].filename,
+                  uploadedAt: otherYear.recordset[0].uploaded_at,
+              }
+            : undefined;
+
         const staffIdentity = getStaffIdentity(principal);
 
         await executeQuery(
@@ -234,7 +249,7 @@ const httpTrigger: AzureFunction = async function (
 
         ctx.res = {
             status: 201,
-            body: { docId: body.docId, message: 'Document recorded successfully' },
+            body: { docId: body.docId, message: 'Document recorded successfully', sameFileInOtherYear },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };
     }

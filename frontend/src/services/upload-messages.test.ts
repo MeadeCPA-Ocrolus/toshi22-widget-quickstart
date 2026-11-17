@@ -1,4 +1,4 @@
-import { friendlyMessage, shortReference, summarizeProblems, summarizeSuccess, GENERIC_FAILURE, SESSION_PROBLEM } from './upload-messages';
+import { friendlyMessage, shortReference, summarizeOutcome, GENERIC_FAILURE, SESSION_PROBLEM } from './upload-messages';
 
 describe('friendlyMessage', () => {
     it('shows actionable API messages as sent', () => {
@@ -36,12 +36,10 @@ describe('shortReference', () => {
 
 describe('banner text', () => {
     it('counts what is listed', () => {
-        expect(summarizeProblems(1, 0)).toBe('1 file failed');
-        expect(summarizeProblems(2, 0)).toBe('2 files failed');
-        expect(summarizeProblems(0, 1)).toBe('1 file already uploaded');
-        expect(summarizeProblems(0, 3)).toBe('3 files already uploaded');
-        expect(summarizeProblems(2, 1)).toBe('2 failed, 1 already uploaded');
-        expect(summarizeSuccess(1)).toBe('1 file uploaded');
-        expect(summarizeSuccess(3)).toBe('3 files uploaded');
+        expect(summarizeOutcome(0, 1, 0)).toBe('1 failed');
+        expect(summarizeOutcome(0, 0, 1)).toBe('1 duplicate');
+        expect(summarizeOutcome(0, 0, 13)).toBe('13 duplicates');
+        expect(summarizeOutcome(3, 0, 0)).toBe('3 uploaded');
+        expect(summarizeOutcome(6, 5, 13)).toBe('6 uploaded, 5 failed, 13 duplicates');
     });
 });

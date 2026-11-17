@@ -36,16 +36,14 @@ export function shortReference(correlationId: string | undefined | null): string
     return correlationId ? correlationId.slice(0, 8) : undefined;
 }
 
-const files = (n: number) => (n === 1 ? '1 file' : `${n} files`);
-
-/** Banner text for failed and duplicate lines, e.g. "2 failed, 1 already uploaded". */
-export function summarizeProblems(failed: number, duplicates: number): string {
-    if (failed > 0 && duplicates > 0) return `${failed} failed, ${duplicates} already uploaded`;
-    if (failed > 0) return `${files(failed)} failed`;
-    return `${files(duplicates)} already uploaded`;
-}
-
-/** Banner text when everything on screen succeeded, e.g. "3 files uploaded". */
-export function summarizeSuccess(done: number): string {
-    return `${files(done)} uploaded`;
+/**
+ * Banner text with one count per outcome, left out when zero,
+ * e.g. "6 uploaded, 5 failed, 13 duplicates".
+ */
+export function summarizeOutcome(uploaded: number, failed: number, duplicates: number): string {
+    const parts: string[] = [];
+    if (uploaded > 0) parts.push(`${uploaded} uploaded`);
+    if (failed > 0) parts.push(`${failed} failed`);
+    if (duplicates > 0) parts.push(duplicates === 1 ? '1 duplicate' : `${duplicates} duplicates`);
+    return parts.join(', ');
 }
