@@ -104,6 +104,7 @@ import { SendLinkDialog } from '../Components/SendLinkDialog';
 import { EditClientDialog } from '../Components/EditClientDialog';
 import DocumentDropzone from '../Components/DocumentDropzone';
 import { getDocuments, DocumentRecord } from '../services/documents-api';
+import { alsoInLabel } from '../services/upload-messages';
 import { downloadClientExport } from '../services/export-api';
 import { CategorySelector } from '../Components/CategorySelector';
 import { getCategoryDisplay } from '../constants/plaidCategories';
@@ -1272,6 +1273,11 @@ export const ClientDetail: React.FC = () => {
                                         >
                                             <Typography variant="body2">{doc.filename}</Typography>
                                             <Typography variant="caption" color="text.secondary">
+                                                {alsoInLabel(doc.also_in_years) && (
+                                                    <Box component="span" sx={{ color: 'warning.dark', mr: 1 }}>
+                                                        {alsoInLabel(doc.also_in_years)}
+                                                    </Box>
+                                                )}
                                                 {doc.tax_year} · {new Date(doc.uploaded_at).toLocaleDateString()}
                                             </Typography>
                                         </Box>

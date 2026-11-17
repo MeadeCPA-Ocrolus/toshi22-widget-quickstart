@@ -47,3 +47,8 @@ export function summarizeOutcome(uploaded: number, failed: number, duplicates: n
     if (duplicates > 0) parts.push(duplicates === 1 ? '1 duplicate' : `${duplicates} duplicates`);
     return parts.join(', ');
 }
+
+/** Small label on a Documents list row, e.g. "also in 2022" or "also in 2022, 2023". Empty when none. */
+export function alsoInLabel(years: number[] | undefined): string {
+    return years && years.length > 0 ? `also in ${years.join(', ')}` : '';
+}

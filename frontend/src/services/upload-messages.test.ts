@@ -1,4 +1,4 @@
-import { friendlyMessage, shortReference, summarizeOutcome, GENERIC_FAILURE, SESSION_PROBLEM } from './upload-messages';
+import { friendlyMessage, shortReference, summarizeOutcome, alsoInLabel, GENERIC_FAILURE, SESSION_PROBLEM } from './upload-messages';
 
 describe('friendlyMessage', () => {
     it('shows actionable API messages as sent', () => {
@@ -41,5 +41,14 @@ describe('banner text', () => {
         expect(summarizeOutcome(0, 0, 13)).toBe('13 duplicates');
         expect(summarizeOutcome(3, 0, 0)).toBe('3 uploaded');
         expect(summarizeOutcome(6, 5, 13)).toBe('6 uploaded, 5 failed, 13 duplicates');
+    });
+});
+
+describe('alsoInLabel', () => {
+    it('labels the other years, or nothing', () => {
+        expect(alsoInLabel(undefined)).toBe('');
+        expect(alsoInLabel([])).toBe('');
+        expect(alsoInLabel([2022])).toBe('also in 2022');
+        expect(alsoInLabel([2022, 2023])).toBe('also in 2022, 2023');
     });
 });
