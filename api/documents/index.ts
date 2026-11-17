@@ -42,6 +42,15 @@ interface DocumentRecord {
     uploaded_at: string;
 }
 
+/** "2022,2023" from the list query becomes [2022, 2023]; nothing becomes []. */
+function parseYearList(value: string | null | undefined): number[] {
+    if (!value) return [];
+    return value
+        .split(',')
+        .map((y) => parseInt(y, 10))
+        .filter((y) => Number.isInteger(y));
+}
+
 interface ConfirmUploadRequest {
     docId: string;
     clientUuid: string;
@@ -271,16 +280,24 @@ const httpTrigger: AzureFunction = async function (
             return;
         }
 
+        // also_in_years: other tax years in which this client has a file with the same
+        // checksum ("2022,2023"), worked out here so nothing extra is stored. It looks at
+        // every year, even when taxYear narrows the list.
         let query = `
-            SELECT doc_id, client_uuid, tax_year, blob_path, filename,
-                   file_size, sha256_hash, uploaded_by, uploaded_at
-            FROM documents
-            WHERE client_uuid = @clientUuid`;
+            SELECT d.doc_id, d.client_uuid, d.tax_year, d.blob_path, d.filename,
+                   d.file_size, d.sha256_hash, d.uploaded_by, d.uploaded_at,
+                   (SELECT STRING_AGG(CAST(y.tax_year AS varchar(4)), ',') WITHIN GROUP (ORDER BY y.tax_year)
+                      FROM (SELECT DISTINCT o.tax_year FROM documents o
+                             WHERE o.client_uuid = d.client_uuid
+                               AND o.sha256_hash = d.sha256_hash
+                               AND o.tax_year <> d.tax_year) y) AS also_in_years
+            FROM documents d
+            WHERE d.client_uuid = @clientUuid`;
 
         const params: Record<string, any> = { clientUuid };
 
         if (taxYear) {
-            query += ` AND tax_year = @taxYear`;
+            query += ` AND d.tax_year = @taxYear`;
             params.taxYear = parseInt(taxYear, 10);
             if (!Number.isInteger(params.taxYear)) {
                 ctx.res = {
@@ -292,15 +309,20 @@ const httpTrigger: AzureFunction = async function (
             }
         }
 
-        query += ` ORDER BY uploaded_at DESC`;
+        query += ` ORDER BY d.uploaded_at DESC`;
 
-        const result = await executeQuery<DocumentRecord>(query, params);
+        const result = await executeQuery<DocumentRecord & { also_in_years?: string | null }>(query, params);
 
         ctx.log(`Listed ${result.recordset.length} documents for client ${clientUuid}`);
 
         ctx.res = {
             status: 200,
-            body: { documents: result.recordset },
+            body: {
+                documents: result.recordset.map(({ also_in_years, ...doc }) => ({
+                    ...doc,
+                    also_in_years: parseYearList(also_in_years),
+                })),
+            },
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         };
     }
