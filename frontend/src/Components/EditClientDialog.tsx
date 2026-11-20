@@ -144,7 +144,7 @@ export const EditClientDialog: React.FC<EditClientDialogProps> = ({
     };
 
     const handleDelete = async () => {
-        if (!window.confirm(`Delete ${getClientDisplayName(client)}? This can't be undone from the UI.`)) {
+        if (!window.confirm(`Delete ${getClientDisplayName(client)}? This also disconnects their bank connections at Plaid, and can't be undone from the UI.`)) {
             return;
         }
 
@@ -152,7 +152,12 @@ export const EditClientDialog: React.FC<EditClientDialogProps> = ({
         setError(null);
 
         try {
-            await deleteClient(client.client_id);
+            const result = await deleteClient(client.client_id);
+            // The client is gone either way; if Plaid could not be told for some
+            // bank connections, say so before leaving the page.
+            if (result.warning) {
+                window.alert(result.warning);
+            }
             onDeleted();
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to delete client';

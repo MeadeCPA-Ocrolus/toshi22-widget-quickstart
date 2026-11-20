@@ -995,7 +995,10 @@ export const ClientDetail: React.FC = () => {
         }
 
         try {
-            await deleteItem(itemId, true);
+            const result = await deleteItem(itemId, true);
+            if (result.warning) {
+                alert(result.warning);
+            }
             await fetchClientData();
         } catch (err) {
             alert(err instanceof Error ? err.message : 'Failed to delete item');

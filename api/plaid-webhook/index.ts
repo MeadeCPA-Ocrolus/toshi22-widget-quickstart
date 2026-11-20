@@ -265,6 +265,13 @@ async function updateItemStatus(
             if (itemLookup.recordset.length > 0) {
                 const internalItemId = itemLookup.recordset[0].item_id;
                 
+                // One meaning of "archived": also set the flag the app filters on,
+                // so a connection the client revoked is hidden like a removed one.
+                await executeQuery(
+                    `UPDATE items SET is_archived = 1, updated_at = GETDATE() WHERE item_id = @itemId`,
+                    { itemId: internalItemId }
+                );
+                
                 // Archive all accounts for this item
                 await executeQuery(
                     `UPDATE accounts 
@@ -708,11 +715,14 @@ async function processSinglePublicToken(
         { plaidItemId }
     );
 
-    // Check for same client + institution (active items - duplicate prevention)
+    // Check for same client + institution (active items - duplicate prevention).
+    // A bank removed in the app (is_archived = 1) or revoked by the client does not count.
+    // The status check can go once old rows are backfilled (database/schema/one-off-backfill-archived-items.sql).
     const existingActiveItemByInstitution = await executeQuery<{ item_id: number; plaid_item_id: string }>(
         `SELECT item_id, plaid_item_id FROM items 
          WHERE client_id = @clientId 
            AND institution_id = @institutionId 
+           AND is_archived = 0
            AND status != 'archived'
            AND plaid_item_id != @plaidItemId`,
         { clientId, institutionId, plaidItemId }

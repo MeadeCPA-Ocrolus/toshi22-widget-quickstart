@@ -5,7 +5,7 @@
  * GET /api/clients/:id - Get single client
  * POST /api/clients - Create new client
  * PUT /api/clients/:id - Update client
- * DELETE /api/clients/:id - Delete client (with cascade) - NOW SOFT DELETE
+ * DELETE /api/clients/:id - Delete client (soft delete; also disconnects each bank at Plaid)
  * 
  * Query Parameters for GET /api/clients:
  * - search: Search by name, email, or business name (case-insensitive)
@@ -20,6 +20,7 @@ import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
 import { requireAuth } from '../shared/auth';
 import { serverError, allowOriginHeader } from '../shared/http';
+import { archiveItem, plaidWarning } from '../shared/archive-item';
 
 /**
  * Client record from database
@@ -510,18 +511,20 @@ async function updateClient(
 }
 
 /**
- * Delete client and all related data (cascade delete)
- * 
- * CHANGED: Now a SOFT DELETE - sets is_archived flag instead of physical deletion
- * 
- * Sets:
- * - Client: is_archived = 1
- * - Items: status = 'archived'
- * - Accounts: is_active = 0, closed_at = NOW
- * - Transactions: is_archived = 1 (if table exists)
- * 
- * Preserves: link_tokens, webhook_log (for audit trail)
- * 
+ * Delete client (SOFT DELETE: flags rows, nothing is physically deleted)
+ *
+ * For each of the client's bank connections this does exactly what removing
+ * a bank connection does (see shared/archive-item.ts): tells Plaid to
+ * disconnect it, then archives the connection, its accounts, transactions,
+ * holdings, investment transactions and liabilities. Then the client itself is
+ * archived.
+ *
+ * If Plaid cannot be told for some connections, everything is still archived
+ * here and the response carries a `warning` so the user is told.
+ *
+ * Preserves: link_tokens, webhook_log (for audit trail), documents (they are
+ * hidden because their client is archived).
+ *
  * @param context - Azure Function context
  * @param clientId - Client ID to delete (archive)
  */
@@ -546,81 +549,40 @@ async function deleteClient(context: Context, clientId: number): Promise<void> {
     const client = existingResult.recordset[0];
     context.log(`Archiving client ID ${clientId}`);
 
-    // Get all item IDs for this client (for cascade)
     const itemsResult = await executeQuery<{ item_id: number }>(
         `SELECT item_id FROM items WHERE client_id = @clientId AND is_archived = 0`,
         { clientId }
     );
-    const itemIds = itemsResult.recordset.map(i => i.item_id);
 
-    // Track what we're archiving
     const deleteCounts = {
         transactions: 0,
         accounts: 0,
-        items: itemIds.length,
+        items: 0,
         link_tokens: 0,
         webhook_logs: 0,
     };
+    const plaid = { requested: 0, removed: 0, failed: 0 };
 
-    // SOFT DELETE CASCADE
-    
-    // 1. Archive the client
+    // One connection at a time, so one failure does not stop the others.
+    for (const row of itemsResult.recordset) {
+        const result = await archiveItem(context, row.item_id, {
+            removeFromPlaid: true,
+            reason: 'client_archived',
+        });
+        if (!result.found) continue;
+        deleteCounts.items += 1;
+        deleteCounts.accounts += result.accounts;
+        deleteCounts.transactions += result.transactions;
+        plaid.requested += 1;
+        if (result.plaidRemoval === 'removed') plaid.removed += 1;
+        else plaid.failed += 1;
+    }
+
+    // The client is archived last, so a failure above can be retried.
     await executeQuery(
         `UPDATE clients SET is_archived = 1, updated_at = GETDATE() WHERE client_id = @clientId`,
         { clientId }
     );
-
-    // 2. Archive items (status field remains for link status tracking)
-    if (itemIds.length > 0) {
-        await executeQuery(
-            `UPDATE items SET is_archived = 1, updated_at = GETDATE() WHERE client_id = @clientId AND is_archived = 0`,
-            { clientId }
-        );
-        context.log(`Archived ${deleteCounts.items} items`);
-
-        // 3. Deactivate accounts
-        const accResult = await executeQuery<{ count: number }>(
-            `SELECT COUNT(*) as count FROM accounts WHERE item_id IN (${itemIds.join(',')}) AND is_active = 1`
-        );
-        deleteCounts.accounts = accResult.recordset[0]?.count || 0;
-
-        if (deleteCounts.accounts > 0) {
-            await executeQuery(
-                `UPDATE accounts SET is_active = 0, closed_at = GETDATE(), updated_at = GETDATE() 
-                 WHERE item_id IN (${itemIds.join(',')}) AND is_active = 1`
-            );
-            context.log(`Deactivated ${deleteCounts.accounts} accounts`);
-        }
-
-        // 4. Archive transactions (if table exists)
-        try {
-            const accountIds = await executeQuery<{ account_id: number }>(
-                `SELECT account_id FROM accounts WHERE item_id IN (${itemIds.join(',')})`
-            );
-            const accountIdList = accountIds.recordset.map(a => a.account_id);
-
-            if (accountIdList.length > 0) {
-                const txResult = await executeQuery<{ count: number }>(
-                    `SELECT COUNT(*) as count FROM transactions 
-                     WHERE account_id IN (${accountIdList.join(',')}) AND is_archived = 0`
-                );
-                deleteCounts.transactions = txResult.recordset[0]?.count || 0;
-
-                if (deleteCounts.transactions > 0) {
-                    await executeQuery(
-                        `UPDATE transactions SET is_archived = 1, updated_at = GETDATE() 
-                         WHERE account_id IN (${accountIdList.join(',')}) AND is_archived = 0`
-                    );
-                    context.log(`Archived ${deleteCounts.transactions} transactions`);
-                }
-            }
-        } catch (txError) {
-            // Transactions table might not exist yet (Sprint 3)
-            context.log.warn('Could not archive transactions (table may not exist yet)');
-        }
-    }
-
-    // NOTE: link_tokens and webhook_log are NOT modified
 
     context.log(`Client ${clientId} archived successfully`);
 
@@ -631,6 +593,8 @@ async function deleteClient(context: Context, clientId: number): Promise<void> {
             client_id: clientId,
             client_name: `${client.first_name} ${client.last_name}`,
             deleted: deleteCounts,
+            plaid_removal: plaid,
+            warning: plaidWarning(plaid.failed),
         },
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     };
