@@ -1,617 +1,216 @@
 /**
  * Database Cascade Tests - Soft Delete Operations
- * 
- * Tests the cascade behavior of soft deletes across the database hierarchy:
- * - Client → Items → Accounts → Transactions
- * 
+ *
+ * Tests the cascade behavior of soft deletes across the hierarchy:
+ * Client -> Items -> Accounts -> Transactions (and holdings, investment
+ * transactions and liabilities, which are archived with the item).
+ *
+ * The database is a stand-in that answers by the SQL text, so these tests do
+ * not depend on the order of queries. Plaid is not called for real.
+ *
  * @module __tests__/database-cascade.test
  */
 
 import { Context } from '@azure/functions';
 
-// Mock the database module
-jest.mock('../shared/database', () => ({
-    executeQuery: jest.fn(),
+// Pretend the staff member is signed in (the app rejects anything else with 401).
+jest.mock('../shared/auth', () => ({
+    requireAuth: jest.fn(() => ({ userId: 'u1', userDetails: 'staff@example.com', identityProvider: 'aad', userRoles: [] })),
+    getStaffIdentity: jest.fn(() => 'staff@example.com'),
 }));
+jest.mock('../shared/database', () => ({ executeQuery: jest.fn() }));
+jest.mock('../shared/encryption', () => ({ decrypt: jest.fn(async () => 'access-sandbox-token') }));
+jest.mock('../shared/investments-sync-service', () => ({ archiveInvestmentsForItem: jest.fn() }));
+jest.mock('../shared/liabilities-sync-service', () => ({ archiveLiabilitiesForItem: jest.fn() }));
+const mockItemRemove = jest.fn();
+jest.mock('../shared/plaid-client', () => ({ getPlaidClient: () => ({ itemRemove: mockItemRemove }) }));
 
 import { executeQuery } from '../shared/database';
+import { archiveInvestmentsForItem } from '../shared/investments-sync-service';
+import { archiveLiabilitiesForItem } from '../shared/liabilities-sync-service';
 import clientsHandler from '../clients/index';
 import itemsHandler from '../items/index';
 
 const mockExecuteQuery = executeQuery as jest.MockedFunction<typeof executeQuery>;
 
-/**
- * Create a mock Azure Function context
- */
 function createMockContext(): Context {
     return {
-        log: Object.assign(jest.fn(), {
-            error: jest.fn(),
-            warn: jest.fn(),
-            info: jest.fn(),
-            verbose: jest.fn(),
-        }),
+        log: Object.assign(jest.fn(), { error: jest.fn(), warn: jest.fn(), info: jest.fn(), verbose: jest.fn() }),
         done: jest.fn(),
         res: undefined,
         bindings: {},
-        bindingData: {},
-        bindingDefinitions: [],
-        executionContext: {
-            invocationId: 'test-invocation-id',
-            functionName: 'test',
-            functionDirectory: '/test',
-            retryContext: null,
-        },
-        traceContext: {
-            traceparent: null,
-            tracestate: null,
-            attributes: {},
-        },
     } as unknown as Context;
 }
 
-/**
- * Create a mock HTTP request
- */
-function createMockRequest(options: {
-    method: string;
-    params?: Record<string, string>;
-    query?: Record<string, string>;
-    body?: any;
-}) {
-    return {
-        method: options.method,
-        params: options.params || {},
-        query: options.query || {},
-        body: options.body,
-        headers: {},
-        url: 'http://localhost/api/test',
-    };
+function createMockRequest(options: { method: string; params?: Record<string, string>; query?: Record<string, string> }) {
+    return { method: options.method, params: options.params || {}, query: options.query || {}, headers: {}, url: 'http://localhost/api/test' };
 }
+
+interface World {
+    /** The client, or null when it is missing or already archived. */
+    client?: { client_id: number; first_name: string; last_name: string } | null;
+    /** Active (not archived) items of the client, by item_id. */
+    items: number[];
+    accountsPerItem?: number;
+    transactionsPerItem?: number;
+    /** When true, the transactions table "does not exist". */
+    noTransactionsTable?: boolean;
+}
+
+/** Answers every query by its SQL text. */
+function database(world: World) {
+    const accountsPerItem = world.accountsPerItem ?? 2;
+    const transactionsPerItem = world.transactionsPerItem ?? 10;
+    mockExecuteQuery.mockReset();
+    mockExecuteQuery.mockImplementation((async (sql: string, params?: any) => {
+        if (/FROM clients WHERE client_id/i.test(sql)) {
+            return { recordset: world.client ? [world.client] : [], rowsAffected: [1] };
+        }
+        if (/SELECT item_id FROM items WHERE client_id/i.test(sql)) {
+            return { recordset: world.items.map((item_id) => ({ item_id })), rowsAffected: [world.items.length] };
+        }
+        if (/SELECT item_id, plaid_item_id.*FROM items\s+WHERE item_id = @itemId AND is_archived = 0/is.test(sql)) {
+            const found = world.items.includes(params.itemId);
+            return {
+                recordset: found
+                    ? [{ item_id: params.itemId, plaid_item_id: `item-${params.itemId}`, institution_name: 'Bank', access_token: Buffer.from('x'), access_token_key_id: 1 }]
+                    : [],
+                rowsAffected: [found ? 1 : 0],
+            };
+        }
+        if (/UPDATE accounts/i.test(sql)) return { recordset: [], rowsAffected: [accountsPerItem] };
+        if (/UPDATE t SET/i.test(sql)) {
+            if (world.noTransactionsTable) throw new Error("Invalid object name 'transactions'");
+            return { recordset: [], rowsAffected: [transactionsPerItem] };
+        }
+        return { recordset: [], rowsAffected: [1] };
+    }) as any);
+}
+
+const sqlCalls = () => mockExecuteQuery.mock.calls.map((c) => c[0] as string);
+const ran = (pattern: RegExp) => sqlCalls().some((q) => pattern.test(q));
 
 describe('Database Cascade Tests - Soft Delete Operations', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        // Default mock implementation
-        mockExecuteQuery.mockResolvedValue({
-            recordset: [],
-            recordsets: [],
-            output: {},
-            rowsAffected: [0],
-        } as any);
+        mockItemRemove.mockReset();
+        mockItemRemove.mockResolvedValue({});
     });
 
     describe('1.1 Soft Delete Cascade - Client Level', () => {
         it('should soft-delete entire hierarchy when client is deleted', async () => {
+            database({ client: { client_id: 5, first_name: 'John', last_name: 'Doe' }, items: [10, 11, 12], accountsPerItem: 2, transactionsPerItem: 20 });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '5' } 
-            });
 
-            // Mock client exists check
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{
-                    client_id: 5,
-                    first_name: 'John',
-                    last_name: 'Doe'
-                }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock getting item IDs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    { item_id: 10 },
-                    { item_id: 11 },
-                    { item_id: 12 }
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            } as any);
-
-            // Mock archive client
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock archive items
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            } as any);
-
-            // Mock count accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 6 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock deactivate accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [6],
-            } as any);
-
-            // Mock get account IDs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    { account_id: 100 },
-                    { account_id: 101 },
-                    { account_id: 102 },
-                    { account_id: 103 },
-                    { account_id: 104 },
-                    { account_id: 105 }
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [6],
-            } as any);
-
-            // Mock count transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 60 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock archive transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [60],
-            } as any);
-
-            await clientsHandler(context, req as any);
+            await clientsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '5' } }) as any);
 
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.deleted.items).toBe(3);
             expect(context.res?.body.deleted.accounts).toBe(6);
             expect(context.res?.body.deleted.transactions).toBe(60);
-
-            // Verify cascade update calls
-            const updateCalls = mockExecuteQuery.mock.calls;
-            
-            // Check client archived
-            expect(updateCalls.some(call => 
-                typeof call[0] === 'string' && 
-                call[0].includes('UPDATE clients SET is_archived = 1')
-            )).toBe(true);
-
-            // Check items archived
-            expect(updateCalls.some(call => 
-                typeof call[0] === 'string' &&
-                call[0].includes('UPDATE items SET is_archived = 1')
-            )).toBe(true);
-
-            // Check accounts deactivated
-            expect(updateCalls.some(call => 
-                typeof call[0] === 'string' &&
-                call[0].includes('UPDATE accounts SET is_active = 0')
-            )).toBe(true);
-
-            // Check transactions archived
-            expect(updateCalls.some(call => 
-                typeof call[0] === 'string' &&
-                call[0].includes('UPDATE transactions SET is_archived = 1')
-            )).toBe(true);
+            expect(ran(/UPDATE clients SET is_archived = 1/)).toBe(true);
+            expect(ran(/UPDATE items SET is_archived = 1/)).toBe(true);
+            expect(ran(/UPDATE accounts SET is_active = 0/)).toBe(true);
+            expect(ran(/UPDATE t SET t\.is_archived = 1/)).toBe(true);
+            // holdings, investment transactions and liabilities go with each item
+            expect(archiveInvestmentsForItem).toHaveBeenCalledTimes(3);
+            expect(archiveLiabilitiesForItem).toHaveBeenCalledTimes(3);
         });
 
         it('should handle client with NO items gracefully', async () => {
+            database({ client: { client_id: 99, first_name: 'Jane', last_name: 'Smith' }, items: [] });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '99' } 
-            });
 
-            // Mock client exists
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{
-                    client_id: 99,
-                    first_name: 'Jane',
-                    last_name: 'Smith'
-                }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock no items
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            } as any);
-
-            // Mock archive client
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            await clientsHandler(context, req as any);
+            await clientsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '99' } }) as any);
 
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.deleted.items).toBe(0);
             expect(context.res?.body.deleted.accounts).toBe(0);
             expect(context.res?.body.deleted.transactions).toBe(0);
+            expect(ran(/UPDATE clients SET is_archived = 1/)).toBe(true);
+            expect(ran(/UPDATE items/)).toBe(false);
+            expect(mockItemRemove).not.toHaveBeenCalled();
         });
 
         it('should handle client with multiple items correctly', async () => {
+            database({ client: { client_id: 7, first_name: 'Sam', last_name: 'Lee' }, items: [20, 21, 22], accountsPerItem: 2, transactionsPerItem: 20 });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '7' } 
-            });
 
-            // Mock client exists
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{
-                    client_id: 7,
-                    first_name: 'Bob',
-                    last_name: 'Johnson'
-                }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock 3 items
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    { item_id: 20 },
-                    { item_id: 21 },
-                    { item_id: 22 }
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            } as any);
-
-            // Mock archive client
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock archive items
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            } as any);
-
-            // Mock 6 accounts total (2 per item)
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 6 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock deactivate accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [6],
-            } as any);
-
-            // Mock account IDs
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    { account_id: 200 }, { account_id: 201 },
-                    { account_id: 202 }, { account_id: 203 },
-                    { account_id: 204 }, { account_id: 205 }
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [6],
-            } as any);
-
-            // Mock 60 transactions (10 per account)
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 60 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock archive transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [60],
-            } as any);
-
-            await clientsHandler(context, req as any);
+            await clientsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '7' } }) as any);
 
             expect(context.res?.status).toBe(200);
-            expect(context.res?.body.deleted.items).toBe(3);
-            expect(context.res?.body.deleted.accounts).toBe(6);
-            expect(context.res?.body.deleted.transactions).toBe(60);
+            expect(context.res?.body.deleted).toMatchObject({ items: 3, accounts: 6, transactions: 60 });
             expect(context.res?.body.message).toContain('deleted successfully');
+            // every bank is disconnected at Plaid
+            expect(mockItemRemove).toHaveBeenCalledTimes(3);
         });
     });
 
     describe('1.2 Soft Delete Cascade - Item Level', () => {
         it('should soft-delete item and its children only (not sibling items)', async () => {
+            database({ items: [30, 31], accountsPerItem: 3, transactionsPerItem: 15 });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '15' } 
-            });
 
-            // Mock item exists with 3 accounts and 15 transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{
-                    item_id: 15,
-                    client_id: 5,
-                    plaid_item_id: 'item-sandbox-abc',
-                    access_token: Buffer.from('encrypted'),
-                    access_token_key_id: 1,
-                    institution_name: 'Test Bank',
-                    status: 'active'
-                }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock archive item
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock get accounts for this item
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [
-                    { account_id: 150 },
-                    { account_id: 151 },
-                    { account_id: 152 }
-                ],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            } as any);
-
-            // Mock deactivate accounts
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [3],
-            } as any);
-
-            // Mock count transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 15 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Mock archive transactions
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [15],
-            } as any);
-
-            await itemsHandler(context, req as any);
+            await itemsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '30' } }) as any);
 
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.deleted.accounts).toBe(3);
             expect(context.res?.body.deleted.transactions).toBe(15);
-
-            // Verify ONLY this item was affected
-            const updateCalls = mockExecuteQuery.mock.calls;
-            const itemUpdateCall = updateCalls.find(call => 
-                typeof call[0] === 'string' &&
-                call[0].includes('UPDATE items SET is_archived = 1') &&
-                call[1]?.itemId === 15
-            );
-            expect(itemUpdateCall).toBeDefined();
+            expect(ran(/UPDATE items SET is_archived = 1/)).toBe(true);
+            expect(archiveInvestmentsForItem).toHaveBeenCalledWith(30, 'item_archived');
+            expect(archiveLiabilitiesForItem).toHaveBeenCalledWith(30, 'item_archived');
         });
 
         it('should NOT affect sibling items when one item is deleted', async () => {
-            // This test verifies isolation by checking that queries are scoped to specific item_id
+            database({ items: [40, 41] });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '20' } 
-            });
 
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{
-                    item_id: 20,
-                    client_id: 5,
-                    plaid_item_id: 'item-20',
-                    access_token: Buffer.from('encrypted'),
-                    access_token_key_id: 1,
-                    institution_name: 'Bank A',
-                    status: 'active'
-                }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
+            await itemsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '40' } }) as any);
 
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ account_id: 200 }, { account_id: 201 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [2],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [2],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ count: 10 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [10],
-            } as any);
-
-            await itemsHandler(context, req as any);
-
-            // Verify all queries include WHERE item_id = @itemId
-            const updateCalls = mockExecuteQuery.mock.calls;
-            const accountsQuery = updateCalls.find(call =>
-                typeof call[0] === 'string' &&
-                call[0].includes('UPDATE accounts') &&
-                call[0].includes('WHERE item_id = @itemId')
-            );
-            expect(accountsQuery).toBeDefined();
+            // every archive update is scoped to this one item
+            const itemUpdates = mockExecuteQuery.mock.calls.filter((c) => /UPDATE/i.test(c[0] as string));
+            expect(itemUpdates.length).toBeGreaterThan(0);
+            for (const [sql, params] of itemUpdates) {
+                expect(sql).toMatch(/item_id = @itemId/);
+                expect((params as any).itemId).toBe(40);
+            }
+            expect(archiveInvestmentsForItem).not.toHaveBeenCalledWith(41, expect.anything());
         });
 
         it('should handle item deletion gracefully when transactions table does not exist', async () => {
+            database({ items: [25], accountsPerItem: 1, noTransactionsTable: true });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '25' } 
-            });
 
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{
-                    item_id: 25,
-                    client_id: 5,
-                    plaid_item_id: 'item-25',
-                    access_token: Buffer.from('encrypted'),
-                    access_token_key_id: 1,
-                    institution_name: 'Bank B',
-                    status: 'active'
-                }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [{ account_id: 250 }],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [1],
-            } as any);
-
-            // Transactions query throws (table doesn't exist)
-            mockExecuteQuery.mockRejectedValueOnce(new Error('Invalid object name \'transactions\''));
-
-            await itemsHandler(context, req as any);
+            await itemsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '25' } }) as any);
 
             expect(context.res?.status).toBe(200);
             expect(context.res?.body.deleted.accounts).toBe(1);
-            expect(context.log.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Could not archive transactions')
-            );
+            expect(context.res?.body.deleted.transactions).toBe(0);
+            expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('Could not archive transactions'));
         });
     });
 
     describe('1.3 Soft Delete Idempotency', () => {
         it('should return 404 when deleting already-archived client', async () => {
+            database({ client: null, items: [] });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '100' } 
-            });
 
-            // Mock client not found (already archived)
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            } as any);
-
-            await clientsHandler(context, req as any);
+            await clientsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '5' } }) as any);
 
             expect(context.res?.status).toBe(404);
             expect(context.res?.body.error).toBe('Client not found');
-
-            // Should only have made one query (the check)
-            expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
+            expect(ran(/UPDATE/)).toBe(false);
         });
 
         it('should return 404 when deleting already-archived item', async () => {
+            database({ items: [] });
             const context = createMockContext();
-            const req = createMockRequest({ 
-                method: 'DELETE', 
-                params: { id: '200' } 
-            });
 
-            // Mock item not found (already archived)
-            mockExecuteQuery.mockResolvedValueOnce({
-                recordset: [],
-                recordsets: [],
-                output: {},
-                rowsAffected: [0],
-            } as any);
-
-            await itemsHandler(context, req as any);
+            await itemsHandler(context, createMockRequest({ method: 'DELETE', params: { id: '25' } }) as any);
 
             expect(context.res?.status).toBe(404);
             expect(context.res?.body.error).toBe('Item not found');
-
-            // Should only have made one query
-            expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
+            expect(ran(/UPDATE/)).toBe(false);
         });
     });
 });

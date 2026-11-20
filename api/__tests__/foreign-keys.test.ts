@@ -12,6 +12,12 @@
 import { Context } from '@azure/functions';
 
 // Mock the database module
+// Pretend the staff member is signed in (the app rejects anything else with 401).
+jest.mock('../shared/auth', () => ({
+    requireAuth: jest.fn(() => ({ userId: 'u1', userDetails: 'staff@example.com', identityProvider: 'aad', userRoles: [] })),
+    getStaffIdentity: jest.fn(() => 'staff@example.com'),
+}));
+
 jest.mock('../shared/database', () => ({
     executeQuery: jest.fn(),
 }));
@@ -443,12 +449,14 @@ describe('Database Foreign Key & Relationship Integrity Tests', () => {
 
             await itemsHandler(context, req as any);
 
-            // Verify transactions query includes account_id IN clause
+            // Verify the transactions update is tied to this item's accounts
             const txQuery = mockExecuteQuery.mock.calls.find(call =>
                 typeof call[0] === 'string' && call[0].includes('transactions')
             );
             expect(txQuery).toBeDefined();
-            expect(txQuery![0]).toContain('account_id IN');
+            // transactions are reached through their accounts, for this item only
+            expect(txQuery![0]).toContain('JOIN accounts a ON t.account_id = a.account_id');
+            expect(txQuery![0]).toContain('a.item_id = @itemId');
         });
     });
 

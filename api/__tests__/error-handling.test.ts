@@ -15,6 +15,18 @@
 import { Context } from '@azure/functions';
 
 // Mock all dependencies
+// Pretend the staff member is signed in (the app rejects anything else with 401).
+jest.mock('../shared/auth', () => ({
+    requireAuth: jest.fn(() => ({ userId: 'u1', userDetails: 'staff@example.com', identityProvider: 'aad', userRoles: [] })),
+    getStaffIdentity: jest.fn(() => 'staff@example.com'),
+}));
+
+// The webhook signature check is a separate concern (and its library is not
+// loadable in Jest), so here a request always passes it.
+jest.mock('../shared/webhook-verification', () => ({
+    verifyPlaidWebhook: jest.fn(async () => undefined),
+}));
+
 jest.mock('../shared/database', () => ({
     executeQuery: jest.fn(),
     getPool: jest.fn(),
@@ -142,9 +154,13 @@ describe('Error Handling & Edge Cases Tests', () => {
             await clientsHandler(context, req as any);
 
             expect(context.res?.status).toBe(500);
+            // The browser gets a generic message and a reference number only.
+            expect(context.res?.body.error).toBe('Internal server error');
+            expect(context.res?.body.correlationId).toBeDefined();
+            // The log carries the same reference number and a masked message,
+            // as one string (never the raw Error object).
             expect(context.log.error).toHaveBeenCalledWith(
-                expect.stringContaining('error'),
-                expect.any(Error)
+                expect.stringContaining(context.res?.body.correlationId)
             );
         });
 
