@@ -224,15 +224,12 @@ PostgreSQL is the likely choice; confirm before installing.
 
 Automatic checks:
 - `cd api && npm run build` passes, and `cd frontend && npm run build` passes.
-- Tests: some already fail today and are not yours to fix, so do not count
-  them against your change. In `api/`: `__tests__/database-cascade.test.ts`,
-  `__tests__/foreign-keys.test.ts`, `__tests__/error-handling.test.ts` and
-  `items/index.test.ts` (22 tests; most get a 401 because the tests send no
-  login, and `error-handling` cannot load `jose`). In `frontend/`:
-  `src/App.test.tsx` (4 tests, looking for old text). Everything else in
-  `cd api && npm test` and `cd frontend && CI=true npm test` must pass, and you
-  must not make any other test fail. When your change replaces the login
-  (step 7), update the failing API tests as part of that pull request.
+- Tests: `cd api && npm test` and `cd frontend && CI=true npm test` must both
+  pass completely (nothing is known to fail). Do not delete or weaken a test
+  to make it pass; if a test is wrong, say why in the pull request. When your
+  change replaces the login (step 7), update the tests that fake a signed-in
+  user (they mock `../shared/auth`) and `frontend/src/App.test.tsx` (it looks
+  for the "Sign in with Microsoft" button).
 - No secrets in the diff (`git diff` read through once).
 
 The pull request description must say:

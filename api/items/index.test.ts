@@ -7,6 +7,12 @@
 import { Context } from '@azure/functions';
 
 // Mock the database module
+// Pretend the staff member is signed in (the app rejects anything else with 401).
+jest.mock('../shared/auth', () => ({
+    requireAuth: jest.fn(() => ({ userId: 'u1', userDetails: 'staff@example.com', identityProvider: 'aad', userRoles: [] })),
+    getStaffIdentity: jest.fn(() => 'staff@example.com'),
+}));
+
 jest.mock('../shared/database', () => ({
     executeQuery: jest.fn(),
 }));

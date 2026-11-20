@@ -1,27 +1,24 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
-test('renders Tax Document Manager heading', () => {
-  render(<App />);
-  const heading = screen.getByText(/Tax Document Manager/i);
-  expect(heading).toBeInTheDocument();
+// With nobody signed in (the sign-in check answers "no"), the app shows the
+// sign-in screen and none of the staff pages.
+beforeEach(() => {
+  (global as any).fetch = jest.fn(async () => ({ ok: false, json: async () => ({}) }));
 });
 
-test('renders book selection section', () => {
-  render(<App />);
-  const bookSelection = screen.getByText(/Book Selection/i);
-  expect(bookSelection).toBeInTheDocument();
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
-test('renders document upload section', () => {
+test('shows a loading message while it checks who is signed in', () => {
   render(<App />);
-  const documentUpload = screen.getByText(/Document Upload/i);
-  expect(documentUpload).toBeInTheDocument();
+  expect(screen.getByText(/Loading/i)).toBeInTheDocument();
 });
 
-test('renders recent activity section', () => {
+test('shows the sign-in screen when nobody is signed in', async () => {
   render(<App />);
-  const recentActivity = screen.getByText(/Recent Activity/i);
-  expect(recentActivity).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
 });
