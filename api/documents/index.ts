@@ -292,7 +292,8 @@ const httpTrigger: AzureFunction = async function (
                                AND o.sha256_hash = d.sha256_hash
                                AND o.tax_year <> d.tax_year) y) AS also_in_years
             FROM documents d
-            WHERE d.client_uuid = @clientUuid`;
+            WHERE d.client_uuid = @clientUuid
+              AND EXISTS (SELECT 1 FROM clients c WHERE c.client_uuid = d.client_uuid AND c.is_archived = 0)`;
 
         const params: Record<string, any> = { clientUuid };
 

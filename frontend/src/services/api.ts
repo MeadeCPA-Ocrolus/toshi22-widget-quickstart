@@ -118,8 +118,8 @@ export async function updateClient(
 /**
  * Delete a client
  */
-export async function deleteClient(clientId: number): Promise<{ message: string }> {
-    return fetchApi<{ message: string }>(`/clients/${clientId}`, { method: 'DELETE' });
+export async function deleteClient(clientId: number): Promise<{ message: string; warning?: string }> {
+    return fetchApi<{ message: string; warning?: string }>(`/clients/${clientId}`, { method: 'DELETE' });
 }
 
 /**
@@ -159,9 +159,9 @@ export async function getItem(itemId: number): Promise<{ item: ItemWithAccounts 
 export async function deleteItem(
     itemId: number,
     removeFromPlaid: boolean = false
-): Promise<{ message: string }> {
+): Promise<{ message: string; warning?: string }> {
     const query = removeFromPlaid ? '?removeFromPlaid=true' : '';
-    return fetchApi<{ message: string }>(`/items/${itemId}${query}`, { method: 'DELETE' });
+    return fetchApi<{ message: string; warning?: string }>(`/items/${itemId}${query}`, { method: 'DELETE' });
 }
 
 // ============================================================================
