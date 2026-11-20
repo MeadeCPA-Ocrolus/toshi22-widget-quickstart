@@ -12,10 +12,9 @@
 
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { executeQuery } from '../shared/database';
-import { decrypt } from '../shared/encryption';
+import { archiveItem, plaidWarning } from '../shared/archive-item';
 import { requireAuth } from '../shared/auth';
 import { serverError, allowOriginHeader } from '../shared/http';
-import { redact } from '../shared/safe-log';
 
 /**
  * Item record from database
@@ -229,18 +228,14 @@ async function getItem(context: Context, itemId: number): Promise<void> {
 
 /**
  * Delete item and all related data (cascade delete)
- * 
- * CHANGED: Now a SOFT DELETE - sets is_archived=1 instead of physical deletion
- * 
+ *
+ * SOFT DELETE: flags rows instead of physically deleting them (see
+ * shared/archive-item.ts for exactly what is archived).
+ *
  * Optionally removes the item from Plaid as well (invalidates access token).
- * 
- * Sets:
- * - Item: is_archived = 1 (status field remains for link status)
- * - Accounts: is_active = 0, closed_at = NOW
- * - Transactions: is_archived = 1 (if table exists)
- * 
- * Preserves: webhook_log (for audit trail)
- * 
+ * If Plaid cannot be told, the item is still archived here and the response
+ * carries a `warning` so the user is told.
+ *
  * @param context - Azure Function context
  * @param itemId - Item ID to delete (archive)
  * @param removeFromPlaid - If true, also call Plaid API to remove the item
@@ -252,22 +247,12 @@ async function deleteItem(
 ): Promise<void> {
     context.log(`Deleting (archiving) item: ${itemId}, removeFromPlaid: ${removeFromPlaid}`);
 
-    // Fetch item with access token (needed if removing from Plaid)
-    const itemResult = await executeQuery<ItemRecord>(
-        `SELECT 
-            item_id,
-            client_id,
-            plaid_item_id,
-            access_token,
-            access_token_key_id,
-            institution_name,
-            status
-        FROM items
-        WHERE item_id = @itemId AND is_archived = 0`,
-        { itemId }
-    );
+    const result = await archiveItem(context, itemId, {
+        removeFromPlaid,
+        reason: 'item_archived',
+    });
 
-    if (itemResult.recordset.length === 0) {
+    if (!result.found) {
         context.res = {
             status: 404,
             body: { error: 'Item not found' },
@@ -276,89 +261,7 @@ async function deleteItem(
         return;
     }
 
-    const item = itemResult.recordset[0];
-    context.log(`Archiving item: ${item.institution_name} (plaid_item_id: ${item.plaid_item_id})`);
-
-    // Track what we're archiving
-    const deleteCounts = {
-        transactions: 0,
-        accounts: 0,
-        webhook_logs: 0,
-        removed_from_plaid: false,
-    };
-
-    // Optionally remove from Plaid first (before we lose the access token)
-    if (removeFromPlaid && item.access_token && item.access_token_key_id) {
-        try {
-            // Decrypt the access token
-            const accessToken = await decrypt(item.access_token, item.access_token_key_id);
-            
-            // Import plaid-client dynamically to avoid circular dependencies
-            const { getPlaidClient } = await import('../shared/plaid-client');
-            const plaidClient = getPlaidClient();
-            
-            // Remove item from Plaid
-            await plaidClient.itemRemove({
-                access_token: accessToken,
-            });
-            
-            deleteCounts.removed_from_plaid = true;
-            context.log(`Removed item from Plaid: ${item.plaid_item_id}`);
-        } catch (plaidError) {
-            // Log but don't fail - we still want to clean up our database
-            context.log.warn(`Failed to remove item from Plaid: ${redact(plaidError)}`);
-            // Continue with local deletion
-        }
-    }
-
-    // SOFT DELETE CASCADE
-
-    // 1. Archive the item (status field remains unchanged for link status tracking)
-    await executeQuery(
-        `UPDATE items SET is_archived = 1, updated_at = GETDATE() WHERE item_id = @itemId`,
-        { itemId }
-    );
-
-    // 2. Get account IDs for this item
-    const accountsResult = await executeQuery<{ account_id: number }>(
-        `SELECT account_id FROM accounts WHERE item_id = @itemId AND is_active = 1`,
-        { itemId }
-    );
-    const accountIds = accountsResult.recordset.map(a => a.account_id);
-    deleteCounts.accounts = accountIds.length;
-
-    // 3. Deactivate accounts
-    if (accountIds.length > 0) {
-        await executeQuery(
-            `UPDATE accounts SET is_active = 0, closed_at = GETDATE(), updated_at = GETDATE() 
-             WHERE item_id = @itemId AND is_active = 1`,
-            { itemId }
-        );
-        context.log(`Deactivated ${deleteCounts.accounts} accounts`);
-
-        // 4. Archive transactions (if table exists)
-        try {
-            const txResult = await executeQuery<{ count: number }>(
-                `SELECT COUNT(*) as count FROM transactions 
-                 WHERE account_id IN (${accountIds.join(',')}) AND is_archived = 0`
-            );
-            deleteCounts.transactions = txResult.recordset[0]?.count || 0;
-
-            if (deleteCounts.transactions > 0) {
-                await executeQuery(
-                    `UPDATE transactions SET is_archived = 1, updated_at = GETDATE() 
-                     WHERE account_id IN (${accountIds.join(',')}) AND is_archived = 0`
-                );
-                context.log(`Archived ${deleteCounts.transactions} transactions`);
-            }
-        } catch (txError) {
-            // Transactions table might not exist yet (Sprint 3)
-            context.log.warn('Could not archive transactions (table may not exist yet)');
-        }
-    }
-
-    // NOTE: webhook_log is NOT modified
-
+    const plaidFailed = result.plaidRemoval === 'failed' || result.plaidRemoval === 'no_token';
     context.log(`Item ${itemId} archived successfully`);
 
     context.res = {
@@ -366,9 +269,16 @@ async function deleteItem(
         body: {
             message: 'Item and all related data deleted successfully',
             item_id: itemId,
-            plaid_item_id: item.plaid_item_id,
-            institution_name: item.institution_name,
-            deleted: deleteCounts,
+            plaid_item_id: result.plaidItemId,
+            institution_name: result.institutionName,
+            plaid_removal: result.plaidRemoval,
+            warning: plaidWarning(plaidFailed ? 1 : 0),
+            deleted: {
+                transactions: result.transactions,
+                accounts: result.accounts,
+                webhook_logs: 0,
+                removed_from_plaid: result.plaidRemoval === 'removed',
+            },
         },
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     };
